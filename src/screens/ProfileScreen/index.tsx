@@ -11,6 +11,8 @@ import {
   Platform,
   Alert,
   Modal,
+  PermissionsAndroid,
+  Linking,
 } from 'react-native';
 import { ProfileScreenProps } from '../../types/interfaces';
 import BottomTabBar from '../../components/common/BottomTabBar';
@@ -20,8 +22,8 @@ import { launchCamera, launchImageLibrary, ImagePickerResponse, Asset } from 're
 // Custom interface for media items
 interface MediaItem {
   uri: string;
-  type: 'image' | 'video';
-  timestamp?: string;
+  type: 'photo' | 'video';
+  timestamp?: number;
 }
 
 interface UserDetails {
@@ -34,8 +36,8 @@ interface UserDetails {
 const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   const [post, setPost] = useState('');
   const [profileImage, setProfileImage] = useState<string | null>(null);
-  const [timelapseItems, setTimelapseItems] = useState<MediaItem[]>([]);
-  const [postMedia, setPostMedia] = useState<string | null>(null);
+  const [timelapseItems, setTimelapseItems] = useState<Array<{uri: string; type: 'photo' | 'video'}>>([]);
+  const [postMedia, setPostMedia] = useState<Asset[]>([]);
   const [isSettingsMenuVisible, setIsSettingsMenuVisible] = useState(false);
   const [isViewDetailsModalVisible, setIsViewDetailsModalVisible] = useState(false);
   const [isEditDetailsModalVisible, setIsEditDetailsModalVisible] = useState(false);
@@ -62,35 +64,124 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
         { 
           text: 'Take Photo', 
           onPress: () => {
-            launchCamera({
-              mediaType: 'photo',
-              quality: 0.8,
-            }, (response: ImagePickerResponse) => {
-              if (response.didCancel) {
-                console.log('User cancelled camera');
-              } else if (response.errorCode) {
-                console.log('Camera Error: ', response.errorMessage);
-              } else if (response.assets && response.assets.length > 0) {
-                setProfileImage(response.assets[0].uri || null);
-              }
-            });
+            if (Platform.OS === 'ios') {
+              // For iOS, we need to ensure we have camera permissions first
+              launchCamera({
+                mediaType: 'photo',
+                quality: 0.8,
+                presentationStyle: 'fullScreen',
+                saveToPhotos: true,
+                includeBase64: false,
+              }, (response: ImagePickerResponse) => {
+                if (response.didCancel) {
+                  console.log('User cancelled camera');
+                  return;
+                }
+                if (response.errorCode) {
+                  console.log('Camera Error: ', response.errorMessage);
+                  Alert.alert(
+                    'Camera Access Required',
+                    'Please enable camera access in your device settings to take photos.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { 
+                        text: 'Open Settings', 
+                        onPress: () => {
+                          if (Platform.OS === 'ios') {
+                            Linking.openURL('app-settings:');
+                          }
+                        }
+                      }
+                    ]
+                  );
+                  return;
+                }
+                if (response.assets && response.assets.length > 0) {
+                  setProfileImage(response.assets[0].uri || null);
+                }
+              });
+            } else {
+              // For Android, we'll use the existing implementation
+              launchCamera({
+                mediaType: 'photo',
+                quality: 0.8,
+                saveToPhotos: true,
+              }, (response: ImagePickerResponse) => {
+                if (response.didCancel) {
+                  console.log('User cancelled camera');
+                  return;
+                }
+                if (response.errorCode) {
+                  console.log('Camera Error: ', response.errorMessage);
+                  Alert.alert('Error', 'Failed to access camera. Please check your permissions.');
+                  return;
+                }
+                if (response.assets && response.assets.length > 0) {
+                  setProfileImage(response.assets[0].uri || null);
+                }
+              });
+            }
           }
         },
         { 
           text: 'Choose from Library', 
           onPress: () => {
-            launchImageLibrary({
-              mediaType: 'photo',
-              quality: 0.8,
-            }, (response: ImagePickerResponse) => {
-              if (response.didCancel) {
-                console.log('User cancelled image picker');
-              } else if (response.errorCode) {
-                console.log('ImagePicker Error: ', response.errorMessage);
-              } else if (response.assets && response.assets.length > 0) {
-                setProfileImage(response.assets[0].uri || null);
-              }
-            });
+            if (Platform.OS === 'ios') {
+              // For iOS, we need to ensure we have photo library permissions first
+              launchImageLibrary({
+                mediaType: 'photo',
+                quality: 0.8,
+                presentationStyle: 'fullScreen',
+                includeBase64: false,
+              }, (response: ImagePickerResponse) => {
+                if (response.didCancel) {
+                  console.log('User cancelled image picker');
+                  return;
+                }
+                if (response.errorCode) {
+                  console.log('ImagePicker Error: ', response.errorMessage);
+                  Alert.alert(
+                    'Photo Library Access Required',
+                    'Please enable photo library access in your device settings to select photos.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { 
+                        text: 'Open Settings', 
+                        onPress: () => {
+                          if (Platform.OS === 'ios') {
+                            Linking.openURL('app-settings:');
+                          }
+                        }
+                      }
+                    ]
+                  );
+                  return;
+                }
+                if (response.assets && response.assets.length > 0) {
+                  setProfileImage(response.assets[0].uri || null);
+                }
+              });
+            } else {
+              // For Android, we'll use the existing implementation
+              launchImageLibrary({
+                mediaType: 'photo',
+                quality: 0.8,
+                includeBase64: false,
+              }, (response: ImagePickerResponse) => {
+                if (response.didCancel) {
+                  console.log('User cancelled image picker');
+                  return;
+                }
+                if (response.errorCode) {
+                  console.log('ImagePicker Error: ', response.errorMessage);
+                  Alert.alert('Error', 'Failed to access photo library. Please check your permissions.');
+                  return;
+                }
+                if (response.assets && response.assets.length > 0) {
+                  setProfileImage(response.assets[0].uri || null);
+                }
+              });
+            }
           }
         },
         { text: 'Cancel', style: 'cancel' },
@@ -130,56 +221,151 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
     Alert.alert('Success', 'Your profile has been updated successfully!');
   };
 
-  // Handle adding a timelapse item
-  const handleAddTimelapse = () => {
+  // Update your media handling functions
+  const handleTimelapseMedia = () => {
     Alert.alert(
-      'Add to Today\'s Timelapse',
+      'Add Media',
       'Choose option',
       [
         { 
-          text: 'Take Photo', 
+          text: 'Take Photo/Video', 
           onPress: () => {
-            launchCamera({
-              mediaType: 'mixed',
-              quality: 0.8,
-            }, (response: ImagePickerResponse) => {
-              if (response.didCancel) {
-                console.log('User cancelled camera');
-              } else if (response.errorCode) {
-                console.log('Camera Error: ', response.errorMessage);
-              } else if (response.assets && response.assets.length > 0) {
-                const asset = response.assets[0];
-                const newItem: MediaItem = {
-                  uri: asset.uri || '',
-                  type: asset.type?.includes('video') ? 'video' : 'image',
-                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                };
-                setTimelapseItems([...timelapseItems, newItem]);
-              }
-            });
+            if (Platform.OS === 'ios') {
+              launchCamera({
+                mediaType: 'mixed',
+                quality: 0.8,
+                presentationStyle: 'fullScreen',
+                saveToPhotos: true,
+                includeBase64: false,
+              }, (response: ImagePickerResponse) => {
+                if (response.didCancel) {
+                  console.log('User cancelled camera');
+                  return;
+                }
+                if (response.errorCode) {
+                  console.log('Camera Error: ', response.errorMessage);
+                  Alert.alert(
+                    'Camera Access Required',
+                    'Please enable camera access in your device settings to take photos and videos.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { 
+                        text: 'Open Settings', 
+                        onPress: () => {
+                          if (Platform.OS === 'ios') {
+                            Linking.openURL('app-settings:');
+                          }
+                        }
+                      }
+                    ]
+                  );
+                  return;
+                }
+                if (response.assets && response.assets.length > 0) {
+                  const newMedia = response.assets.map(asset => ({
+                    uri: asset.uri || '',
+                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
+                    fileName: asset.fileName || '',
+                  }));
+                  setTimelapseItems(prev => [...prev, ...newMedia]);
+                }
+              });
+            } else {
+              // For Android, we'll use the existing implementation
+              launchCamera({
+                mediaType: 'mixed',
+                quality: 0.8,
+                saveToPhotos: true,
+              }, (response: ImagePickerResponse) => {
+                if (response.didCancel) {
+                  console.log('User cancelled camera');
+                  return;
+                }
+                if (response.errorCode) {
+                  console.log('Camera Error: ', response.errorMessage);
+                  Alert.alert('Error', 'Failed to access camera. Please check your permissions.');
+                  return;
+                }
+                if (response.assets && response.assets.length > 0) {
+                  const newMedia = response.assets.map(asset => ({
+                    uri: asset.uri || '',
+                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
+                    fileName: asset.fileName || '',
+                  }));
+                  setTimelapseItems(prev => [...prev, ...newMedia]);
+                }
+              });
+            }
           }
         },
         { 
           text: 'Choose from Library', 
           onPress: () => {
-            launchImageLibrary({
-              mediaType: 'mixed',
-              quality: 0.8,
-            }, (response: ImagePickerResponse) => {
-              if (response.didCancel) {
-                console.log('User cancelled image picker');
-              } else if (response.errorCode) {
-                console.log('ImagePicker Error: ', response.errorMessage);
-              } else if (response.assets && response.assets.length > 0) {
-                const asset = response.assets[0];
-                const newItem: MediaItem = {
-                  uri: asset.uri || '',
-                  type: asset.type?.includes('video') ? 'video' : 'image',
-                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                };
-                setTimelapseItems([...timelapseItems, newItem]);
-              }
-            });
+            if (Platform.OS === 'ios') {
+              launchImageLibrary({
+                mediaType: 'mixed',
+                quality: 0.8,
+                presentationStyle: 'fullScreen',
+                includeBase64: false,
+              }, (response: ImagePickerResponse) => {
+                if (response.didCancel) {
+                  console.log('User cancelled image picker');
+                  return;
+                }
+                if (response.errorCode) {
+                  console.log('ImagePicker Error: ', response.errorMessage);
+                  Alert.alert(
+                    'Photo Library Access Required',
+                    'Please enable photo library access in your device settings to select photos and videos.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { 
+                        text: 'Open Settings', 
+                        onPress: () => {
+                          if (Platform.OS === 'ios') {
+                            Linking.openURL('app-settings:');
+                          }
+                        }
+                      }
+                    ]
+                  );
+                  return;
+                }
+                if (response.assets && response.assets.length > 0) {
+                  const newMedia = response.assets.map(asset => ({
+                    uri: asset.uri || '',
+                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
+                    fileName: asset.fileName || '',
+                  }));
+                  setTimelapseItems(prev => [...prev, ...newMedia]);
+                }
+              });
+            } else {
+              // For Android, we'll use the existing implementation
+              launchImageLibrary({
+                mediaType: 'mixed',
+                quality: 0.8,
+                includeBase64: false,
+              }, (response: ImagePickerResponse) => {
+                if (response.didCancel) {
+                  console.log('User cancelled image picker');
+                  return;
+                }
+                if (response.errorCode) {
+                  console.log('ImagePicker Error: ', response.errorMessage);
+                  Alert.alert('Error', 'Failed to access photo library. Please check your permissions.');
+                  return;
+                }
+                if (response.assets && response.assets.length > 0) {
+                  const newMedia = response.assets.map(asset => ({
+                    uri: asset.uri || '',
+                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
+                    fileName: asset.fileName || '',
+                  }));
+                  setTimelapseItems(prev => [...prev, ...newMedia]);
+                }
+              });
+            }
           }
         },
         { text: 'Cancel', style: 'cancel' },
@@ -187,44 +373,150 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
     );
   };
 
-  // Handle adding media to post
-  const handleAddMedia = () => {
+  const handleFeaturePostMedia = () => {
     Alert.alert(
       'Add Media',
       'Choose option',
       [
         { 
-          text: 'Take Photo', 
+          text: 'Take Photo/Video', 
           onPress: () => {
-            launchCamera({
-              mediaType: 'photo',
-              quality: 0.8,
-            }, (response: ImagePickerResponse) => {
-              if (response.didCancel) {
-                console.log('User cancelled camera');
-              } else if (response.errorCode) {
-                console.log('Camera Error: ', response.errorMessage);
-              } else if (response.assets && response.assets.length > 0) {
-                setPostMedia(response.assets[0].uri || null);
-              }
-            });
+            if (Platform.OS === 'ios') {
+              launchCamera({
+                mediaType: 'mixed',
+                quality: 0.8,
+                presentationStyle: 'fullScreen',
+                saveToPhotos: true,
+                includeBase64: false,
+              }, (response: ImagePickerResponse) => {
+                if (response.didCancel) {
+                  console.log('User cancelled camera');
+                  return;
+                }
+                if (response.errorCode) {
+                  console.log('Camera Error: ', response.errorMessage);
+                  Alert.alert(
+                    'Camera Access Required',
+                    'Please enable camera access in your device settings to take photos and videos.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { 
+                        text: 'Open Settings', 
+                        onPress: () => {
+                          if (Platform.OS === 'ios') {
+                            Linking.openURL('app-settings:');
+                          }
+                        }
+                      }
+                    ]
+                  );
+                  return;
+                }
+                if (response.assets && response.assets.length > 0) {
+                  const newMedia = response.assets.map(asset => ({
+                    uri: asset.uri || '',
+                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
+                    fileName: asset.fileName || '',
+                  }));
+                  setPostMedia(prev => [...prev, ...newMedia]);
+                }
+              });
+            } else {
+              // For Android, we'll use the existing implementation
+              launchCamera({
+                mediaType: 'mixed',
+                quality: 0.8,
+                saveToPhotos: true,
+              }, (response: ImagePickerResponse) => {
+                if (response.didCancel) {
+                  console.log('User cancelled camera');
+                  return;
+                }
+                if (response.errorCode) {
+                  console.log('Camera Error: ', response.errorMessage);
+                  Alert.alert('Error', 'Failed to access camera. Please check your permissions.');
+                  return;
+                }
+                if (response.assets && response.assets.length > 0) {
+                  const newMedia = response.assets.map(asset => ({
+                    uri: asset.uri || '',
+                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
+                    fileName: asset.fileName || '',
+                  }));
+                  setPostMedia(prev => [...prev, ...newMedia]);
+                }
+              });
+            }
           }
         },
         { 
           text: 'Choose from Library', 
           onPress: () => {
-            launchImageLibrary({
-              mediaType: 'photo',
-              quality: 0.8,
-            }, (response: ImagePickerResponse) => {
-              if (response.didCancel) {
-                console.log('User cancelled image picker');
-              } else if (response.errorCode) {
-                console.log('ImagePicker Error: ', response.errorMessage);
-              } else if (response.assets && response.assets.length > 0) {
-                setPostMedia(response.assets[0].uri || null);
-              }
-            });
+            if (Platform.OS === 'ios') {
+              launchImageLibrary({
+                mediaType: 'mixed',
+                quality: 0.8,
+                presentationStyle: 'fullScreen',
+                includeBase64: false,
+              }, (response: ImagePickerResponse) => {
+                if (response.didCancel) {
+                  console.log('User cancelled image picker');
+                  return;
+                }
+                if (response.errorCode) {
+                  console.log('ImagePicker Error: ', response.errorMessage);
+                  Alert.alert(
+                    'Photo Library Access Required',
+                    'Please enable photo library access in your device settings to select photos and videos.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { 
+                        text: 'Open Settings', 
+                        onPress: () => {
+                          if (Platform.OS === 'ios') {
+                            Linking.openURL('app-settings:');
+                          }
+                        }
+                      }
+                    ]
+                  );
+                  return;
+                }
+                if (response.assets && response.assets.length > 0) {
+                  const newMedia = response.assets.map(asset => ({
+                    uri: asset.uri || '',
+                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
+                    fileName: asset.fileName || '',
+                  }));
+                  setPostMedia(prev => [...prev, ...newMedia]);
+                }
+              });
+            } else {
+              // For Android, we'll use the existing implementation
+              launchImageLibrary({
+                mediaType: 'mixed',
+                quality: 0.8,
+                includeBase64: false,
+              }, (response: ImagePickerResponse) => {
+                if (response.didCancel) {
+                  console.log('User cancelled image picker');
+                  return;
+                }
+                if (response.errorCode) {
+                  console.log('ImagePicker Error: ', response.errorMessage);
+                  Alert.alert('Error', 'Failed to access photo library. Please check your permissions.');
+                  return;
+                }
+                if (response.assets && response.assets.length > 0) {
+                  const newMedia = response.assets.map(asset => ({
+                    uri: asset.uri || '',
+                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
+                    fileName: asset.fileName || '',
+                  }));
+                  setPostMedia(prev => [...prev, ...newMedia]);
+                }
+              });
+            }
           }
         },
         { text: 'Cancel', style: 'cancel' },
@@ -234,13 +526,13 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
 
   // Handle posting
   const handlePost = () => {
-    if (post.trim().length > 0 || postMedia) {
+    if (post.trim().length > 0 || postMedia.length > 0) {
       // Here you would normally send the post to a server
       console.log('Posting:', { text: post, media: postMedia });
       
       // Reset the form
       setPost('');
-      setPostMedia(null);
+      setPostMedia([]);
       
       // Show confirmation
       Alert.alert('Success', 'Your post has been shared!');
@@ -492,29 +784,27 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
           <ScrollView 
             horizontal 
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.timelapseContainer}
+            style={styles.timelapseScrollView}
           >
-            <TouchableOpacity 
-              style={styles.addTimelapseButton}
-              onPress={handleAddTimelapse}
-            >
-              <Text style={styles.addTimelapseButtonText}>+</Text>
-            </TouchableOpacity>
-            
             {timelapseItems.map((item, index) => (
               <View key={index} style={styles.timelapseItem}>
                 <Image 
                   source={{ uri: item.uri }} 
                   style={styles.timelapseImage} 
                 />
-                <Text style={styles.timelapseTime}>{item.timestamp}</Text>
                 {item.type === 'video' && (
                   <View style={styles.videoIndicator}>
-                    <Text style={styles.videoIndicatorText}>▶️</Text>
+                    <Text style={styles.videoIndicatorText}>▶</Text>
                   </View>
                 )}
               </View>
             ))}
+            <TouchableOpacity 
+              style={styles.addTimelapseButton}
+              onPress={handleTimelapseMedia}
+            >
+              <Text style={styles.addTimelapseText}>+</Text>
+            </TouchableOpacity>
           </ScrollView>
         </View>
         
@@ -533,33 +823,47 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
               onChangeText={setPost}
             />
             
-            {postMedia && (
+            {postMedia.length > 0 && (
               <View style={styles.postMediaPreview}>
-                <Image source={{ uri: postMedia }} style={styles.postMediaImage} />
-                <TouchableOpacity
-                  style={styles.removeMediaButton}
-                  onPress={() => setPostMedia(null)}
-                >
-                  <Text style={styles.removeMediaButtonText}>✕</Text>
-                </TouchableOpacity>
+                {postMedia.map((media, index) => (
+                  <View key={index} style={styles.mediaPreviewContainer}>
+                    <Image 
+                      source={{ uri: media.uri }} 
+                      style={styles.postMediaImage} 
+                    />
+                    {media.type?.includes('video') && (
+                      <View style={styles.videoIndicator}>
+                        <Text style={styles.videoIndicatorText}>Video</Text>
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      style={styles.removeMediaButton}
+                      onPress={() => {
+                        setPostMedia(prev => prev.filter((_, i) => i !== index));
+                      }}
+                    >
+                      <Text style={styles.removeMediaButtonText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
               </View>
             )}
             
             <View style={styles.postActions}>
               <TouchableOpacity 
-                style={styles.mediaButton}
-                onPress={handleAddMedia}
+                style={styles.cameraButton}
+                onPress={handleFeaturePostMedia}
               >
-                <Text style={styles.mediaButtonText}>📷</Text>
+                <Text style={styles.cameraIcon}>📷</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
                 style={[
                   styles.postButton,
-                  post.trim().length === 0 && !postMedia && styles.postButtonDisabled
+                  post.trim().length === 0 && postMedia.length === 0 && styles.postButtonDisabled
                 ]}
                 onPress={handlePost}
-                disabled={post.trim().length === 0 && !postMedia}
+                disabled={post.trim().length === 0 && postMedia.length === 0}
               >
                 <Text style={styles.postButtonText}>Post</Text>
               </TouchableOpacity>

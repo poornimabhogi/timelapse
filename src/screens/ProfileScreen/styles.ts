@@ -609,4 +609,25 @@ export const styles = StyleSheet.create({
     color: '#333',
     flex: 1,
   },
+  timelapseScrollView: {
+    marginTop: 8,
+  },
+  addTimelapseText: {
+    fontSize: 24,
+    color: '#6B4EFF',
+    fontWeight: 'bold',
+  },
+  mediaPreviewContainer: {
+    position: 'relative',
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  cameraButton: {
+    padding: 8,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+  },
+  cameraIcon: {
+    fontSize: 24,
+  },
 }); 
