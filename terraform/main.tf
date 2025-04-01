@@ -1,5 +1,5 @@
 provider "aws" {
-  region = var.aws_region
+  region = "us-east-1"  # Change this to your desired region
 }
 
 # Terraform state configuration - use S3 backend for team collaboration
@@ -7,7 +7,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
   }
   
@@ -23,18 +23,22 @@ terraform {
 
 # S3 bucket for media storage
 resource "aws_s3_bucket" "media_bucket" {
-  bucket = "timelapse-media-storage"
-  force_destroy = true
+  bucket = "timelapse-media-storage"  # Change this to your desired bucket name
+
+  tags = {
+    Name        = "Timelapse Media Storage"
+    Environment = "production"
+  }
 }
 
-# Enable CORS on the S3 bucket
+# Enable CORS for the S3 bucket
 resource "aws_s3_bucket_cors_configuration" "media_bucket_cors" {
   bucket = aws_s3_bucket.media_bucket.id
 
   cors_rule {
     allowed_headers = ["*"]
     allowed_methods = ["GET", "PUT", "POST", "DELETE"]
-    allowed_origins = ["*"] # Should be restricted in production
+    allowed_origins = ["*"]  # In production, restrict this to your app's domain
     expose_headers  = ["ETag"]
     max_age_seconds = 3000
   }
@@ -210,26 +214,9 @@ resource "aws_cognito_identity_pool_role_attachment" "identity_pool_role_attachm
   }
 }
 
-# Lambda function for processing uploaded media
-resource "aws_lambda_function" "media_processor" {
-  function_name = "timelapse-media-processor"
-  filename      = "lambda.zip" # You'll need to create this zip file with your Lambda code
-  handler       = "index.handler"
-  runtime       = "nodejs16.x"
-  role          = aws_iam_role.lambda_exec.arn
-  
-  environment {
-    variables = {
-      S3_BUCKET = aws_s3_bucket.media_bucket.bucket
-      USERS_TABLE = aws_dynamodb_table.users_table.name
-      POSTS_TABLE = aws_dynamodb_table.posts_table.name
-    }
-  }
-}
-
 # IAM role for the Lambda function
-resource "aws_iam_role" "lambda_exec" {
-  name = "timelapse-lambda-exec-role"
+resource "aws_iam_role" "lambda_role" {
+  name = "timelapse_upload_lambda_role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -246,12 +233,22 @@ resource "aws_iam_role" "lambda_exec" {
 }
 
 # IAM policy for the Lambda function
-resource "aws_iam_policy" "lambda_policy" {
-  name = "timelapse-lambda-policy"
+resource "aws_iam_role_policy" "lambda_policy" {
+  name = "timelapse_upload_lambda_policy"
+  role = aws_iam_role.lambda_role.id
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "${aws_s3_bucket.media_bucket.arn}/*"
+      },
       {
         Effect = "Allow"
         Action = [
@@ -260,57 +257,60 @@ resource "aws_iam_policy" "lambda_policy" {
           "logs:PutLogEvents"
         ]
         Resource = "arn:aws:logs:*:*:*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject"
-        ]
-        Resource = "${aws_s3_bucket.media_bucket.arn}/*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:UpdateItem"
-        ]
-        Resource = [
-          aws_dynamodb_table.users_table.arn,
-          aws_dynamodb_table.posts_table.arn
-        ]
       }
     ]
   })
 }
 
-# Attach the policy to the Lambda role
-resource "aws_iam_role_policy_attachment" "attach_lambda_policy" {
-  role       = aws_iam_role.lambda_exec.name
-  policy_arn = aws_iam_policy.lambda_policy.arn
-}
+# Lambda function for generating presigned URLs
+resource "aws_lambda_function" "generate_presigned_url" {
+  filename         = "lambda/generate_presigned_url.zip"
+  function_name    = "generate_presigned_url"
+  role            = aws_iam_role.lambda_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs18.x"
+  timeout         = 30
+  memory_size     = 128
+  publish         = true
 
-# S3 event notification to trigger Lambda
-resource "aws_s3_bucket_notification" "bucket_notification" {
-  bucket = aws_s3_bucket.media_bucket.id
-
-  lambda_function {
-    lambda_function_arn = aws_lambda_function.media_processor.arn
-    events              = ["s3:ObjectCreated:*"]
-    filter_prefix       = "uploads/"
+  environment {
+    variables = {
+      BUCKET_NAME = aws_s3_bucket.media_bucket.id
+    }
   }
 }
 
-# API Gateway for mobile app to communicate with backend
+# API Gateway for the Lambda function
 resource "aws_apigatewayv2_api" "timelapse_api" {
   name          = "timelapse-api"
   protocol_type = "HTTP"
-  cors_configuration {
-    allow_origins = ["*"] # Should be restricted in production
-    allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    allow_headers = ["*"]
-  }
+}
+
+resource "aws_apigatewayv2_stage" "timelapse_stage" {
+  api_id = aws_apigatewayv2_api.timelapse_api.id
+  name   = "prod"
+}
+
+resource "aws_apigatewayv2_integration" "lambda_integration" {
+  api_id           = aws_apigatewayv2_api.timelapse_api.id
+  integration_type = "AWS_PROXY"
+
+  integration_uri    = aws_lambda_function.generate_presigned_url.invoke_arn
+  integration_method = "POST"
+}
+
+resource "aws_apigatewayv2_route" "lambda_route" {
+  api_id    = aws_apigatewayv2_api.timelapse_api.id
+  route_key = "POST /generate-presigned-url"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+}
+
+resource "aws_lambda_permission" "api_gw" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.generate_presigned_url.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.timelapse_api.execution_arn}/*/*"
 }
 
 # Output the crucial resource identifiers

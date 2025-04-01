@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,164 +10,168 @@ import {
   Platform,
   Image,
   FlatList,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SocialScreenProps } from '../../types/interfaces';
 import BottomTabBar from '../../components/common/BottomTabBar';
 import { styles } from './styles';
+import { useAuth } from '../../contexts/AuthContext';
+import { generateClient } from 'aws-amplify/api';
+import { listTimelapses, getFeaturePosts } from '../../graphql/queries';
+import { onCreateTimelapse, onCreateFeaturePost } from '../../graphql/subscriptions';
+import { OnCreateTimelapseSubscription, OnCreateFeaturePostSubscription } from '../../graphql/subscriptions';
+import { SocialFeedItem } from '../../types/social';
+import { SocialFeedCard } from '../../components/SocialFeedCard';
+import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { Observable } from 'zen-observable-ts';
 
-// Mock data for followed users' timelapses and posts
-const MOCK_FOLLOWED_USERS = [
-  {
-    id: '1',
-    username: 'john_doe',
-    profileImage: 'https://via.placeholder.com/150',
-    hasTimelapse: true,
-  },
-  {
-    id: '2',
-    username: 'jane_smith',
-    profileImage: 'https://via.placeholder.com/150',
-    hasTimelapse: true,
-  },
-  {
-    id: '3',
-    username: 'mike_jones',
-    profileImage: 'https://via.placeholder.com/150',
-    hasTimelapse: false,
-  },
-  {
-    id: '4',
-    username: 'sarah_lee',
-    profileImage: 'https://via.placeholder.com/150',
-    hasTimelapse: true,
-  },
-];
+const client = generateClient();
 
-const MOCK_FEATURE_POSTS = [
-  {
-    id: '1',
-    userId: '2',
-    username: 'jane_smith',
-    userImage: 'https://via.placeholder.com/150',
-    text: 'Just finished my morning jog! Feeling great and ready for the day. #fitness #morning',
-    image: 'https://via.placeholder.com/400x300',
-    time: '2 hours ago',
-    likes: 24,
-    comments: 5,
-    hasVideo: false,
-  },
-  {
-    id: '2',
-    userId: '1',
-    username: 'john_doe',
-    userImage: 'https://via.placeholder.com/150',
-    text: 'Check out this amazing view from my hike today!',
-    image: 'https://via.placeholder.com/400x300',
-    time: '5 hours ago',
-    likes: 42,
-    comments: 8,
-    hasVideo: true,
-  },
-  {
-    id: '3',
-    userId: '4',
-    username: 'sarah_lee',
-    userImage: 'https://via.placeholder.com/150',
-    text: 'Made a delicious healthy lunch today. Simple but tasty!',
-    image: 'https://via.placeholder.com/400x300',
-    time: 'Yesterday',
-    likes: 18,
-    comments: 3,
-    hasVideo: false,
-  },
-];
+interface GraphQLResponse<T> {
+  data: T;
+  errors?: Array<{ message: string }>;
+}
+
+interface SubscriptionResponse<T> {
+  data: T;
+  errors?: Array<{ message: string }>;
+}
+
+interface User {
+  id: string;
+  username: string;
+  name: string;
+  avatar: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
+  const { user } = useAuth();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [followedUsers, setFollowedUsers] = useState<string[]>([]);
+  const [feedItems, setFeedItems] = useState<SocialFeedItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const convertToSocialFeedItem = (item: any): SocialFeedItem => {
+    return {
+      id: item.id,
+      userId: item.userId,
+      username: item.user?.username || 'Unknown User',
+      userAvatar: item.user?.avatar || null,
+      content: item.description || item.text || '',
+      mediaUrls: item.mediaUrls || [],
+      likes: item.likes || 0,
+      comments: item.comments?.map((comment: any) => ({
+        id: comment.id,
+        text: comment.text,
+        createdAt: new Date(comment.createdAt),
+        user: {
+          id: comment.user.id,
+          username: comment.user.username,
+          name: comment.user.name,
+          avatar: comment.user.avatar,
+        },
+      })) || [],
+      createdAt: new Date(item.createdAt),
+      updatedAt: new Date(item.updatedAt),
+      type: item.type || 'timelapse',
+    };
+  };
+
+  const fetchTimelapses = async () => {
+    try {
+      const response = await client.graphql({
+        query: listTimelapses,
+        variables: { limit: 10 },
+      }) as GraphQLResponse<{ listTimelapses: { items: any[] } }>;
+
+      if (response.data?.listTimelapses?.items) {
+        const items = response.data.listTimelapses.items.map(convertToSocialFeedItem);
+        setFeedItems(items);
+        
+        // Extract followed users from feed items
+        const followedUserIds = items
+          .map(item => item.userId)
+          .filter(id => id !== user?.uid);
+        setFollowedUsers(followedUserIds);
+      }
+    } catch (error) {
+      console.error('Error fetching timelapses:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const fetchFeaturePosts = async () => {
+    try {
+      const response = await client.graphql({
+        query: getFeaturePosts,
+      }) as GraphQLResponse<{ getFeaturePosts: any[] }>;
+
+      if (response.data?.getFeaturePosts) {
+        const items = response.data.getFeaturePosts.map(convertToSocialFeedItem);
+        setFeedItems(prevItems => [...prevItems, ...items]);
+      }
+    } catch (error) {
+      console.error('Error fetching feature posts:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchTimelapses();
+    fetchFeaturePosts();
+
+    // Set up subscriptions
+    const timelapseSubscription = (client.graphql({
+      query: onCreateTimelapse,
+    }) as unknown as Observable<SubscriptionResponse<OnCreateTimelapseSubscription>>).subscribe({
+      next: ({ data }) => {
+        if (data?.onCreateTimelapse) {
+          const newItem = convertToSocialFeedItem(data.onCreateTimelapse);
+          setFeedItems(prevItems => [newItem, ...prevItems]);
+        }
+      },
+      error: (error: Error) => console.error('Error in timelapse subscription:', error),
+    });
+
+    const featurePostSubscription = (client.graphql({
+      query: onCreateFeaturePost,
+    }) as unknown as Observable<SubscriptionResponse<OnCreateFeaturePostSubscription>>).subscribe({
+      next: ({ data }) => {
+        if (data?.onCreateFeaturePost) {
+          const newItem = convertToSocialFeedItem(data.onCreateFeaturePost);
+          setFeedItems(prevItems => [newItem, ...prevItems]);
+        }
+      },
+      error: (error: Error) => console.error('Error in feature post subscription:', error),
+    });
+
+    // Cleanup subscriptions on unmount
+    return () => {
+      timelapseSubscription.unsubscribe();
+      featurePostSubscription.unsubscribe();
+    };
+  }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchTimelapses();
+    fetchFeaturePosts();
+  };
+
   // Function to open a user's profile when clicked
   const handleUserProfilePress = (userId: string) => {
     console.log(`View profile of user with ID: ${userId}`);
-    // This would navigate to the user's profile in a real app
+    // TODO: Navigate to user profile
   };
 
-  // Function to render time capsule item
-  const renderTimeCapsuleItem = ({ item }: { item: typeof MOCK_FOLLOWED_USERS[0] }) => (
-    <TouchableOpacity 
-      style={styles.timeCapsuleItem}
-      onPress={() => handleUserProfilePress(item.id)}
-    >
-      <View style={[
-        styles.timeCapsuleImage, 
-        item.hasTimelapse ? styles.timeCapsuleActive : {}
-      ]}>
-        <Image 
-          source={{ uri: item.profileImage }}
-          style={styles.userImage}
-        />
-      </View>
-      <Text style={styles.timeCapsuleUsername}>
-        {item.username}
-      </Text>
-    </TouchableOpacity>
-  );
-
-  // Function to render feature post
-  const renderFeaturePost = ({ item }: { item: typeof MOCK_FEATURE_POSTS[0] }) => (
-    <View style={styles.featurePostItem}>
-      <View style={styles.postHeader}>
-        <TouchableOpacity 
-          onPress={() => handleUserProfilePress(item.userId)}
-          style={styles.postAuthorContainer}
-        >
-          <Image 
-            source={{ uri: item.userImage }}
-            style={styles.postAuthorImage}
-          />
-          <View style={styles.postAuthorInfo}>
-            <Text style={styles.postAuthorName}>{item.username}</Text>
-            <Text style={styles.postTime}>{item.time}</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.moreOptions}>
-          <Text>•••</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.postContent}>
-        <Text style={styles.postText}>{item.text}</Text>
-        <View style={styles.postImageContainer}>
-          <Image 
-            source={{ uri: item.image }}
-            style={styles.postImage}
-          />
-          {item.hasVideo && (
-            <View style={styles.videoIndicator}>
-              <Text style={styles.videoIndicatorText}>▶️</Text>
-            </View>
-          )}
-        </View>
-      </View>
-
-      <View style={styles.postActions}>
-        <TouchableOpacity style={styles.postAction}>
-          <Text style={styles.actionIcon}>❤️</Text>
-          <Text style={styles.actionText}>{item.likes} Likes</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.postAction}>
-          <Text style={styles.actionIcon}>💬</Text>
-          <Text style={styles.actionText}>{item.comments} Comments</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.postAction}>
-          <Text style={styles.actionIcon}>↪️</Text>
-          <Text style={styles.actionText}>Share</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  const hasFollowedUsers = MOCK_FOLLOWED_USERS.length > 0;
-  const hasFeaturePosts = MOCK_FEATURE_POSTS.length > 0;
+  if (loading) {
+    return <LoadingSpinner />;
+  }
 
   return (
     <SafeAreaView style={[
@@ -177,6 +181,9 @@ const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
       <ScrollView 
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
         {/* Search Bar */}
         <View style={styles.searchContainer}>
@@ -188,6 +195,8 @@ const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
               style={styles.searchInput}
               placeholder="Search users..."
               placeholderTextColor="#999"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
             />
           </View>
         </View>
@@ -196,11 +205,26 @@ const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>Today's TimeCapsules</Text>
           
-          {hasFollowedUsers ? (
+          {followedUsers.length > 0 ? (
             <FlatList
-              data={MOCK_FOLLOWED_USERS}
-              renderItem={renderTimeCapsuleItem}
-              keyExtractor={(item) => item.id}
+              data={followedUsers}
+              renderItem={({ item }) => (
+                <TouchableOpacity 
+                  style={styles.timeCapsuleItem}
+                  onPress={() => handleUserProfilePress(item)}
+                >
+                  <View style={styles.timeCapsuleImage}>
+                    <Image 
+                      source={{ uri: item }}
+                      style={styles.userImage}
+                    />
+                  </View>
+                  <Text style={styles.timeCapsuleUsername}>
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              keyExtractor={(item) => item}
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.timeCapsuleList}
@@ -221,24 +245,32 @@ const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>Feature Posts</Text>
           
-          {hasFeaturePosts ? (
-            <View style={styles.featurePostsList}>
-              {MOCK_FEATURE_POSTS.map((post) => (
-                <View key={post.id}>
-                  {renderFeaturePost({ item: post })}
-                </View>
-              ))}
-            </View>
+          {feedItems.length > 0 ? (
+            <FlatList
+              data={feedItems}
+              renderItem={({ item }) => (
+                <SocialFeedCard
+                  item={item}
+                  isFollowed={followedUsers.includes(item.userId)}
+                  onFollow={() => {
+                    setFollowedUsers(prev => [...prev, item.userId]);
+                  }}
+                  onUnfollow={() => {
+                    setFollowedUsers(prev => prev.filter(id => id !== item.userId));
+                  }}
+                />
+              )}
+              keyExtractor={item => item.id}
+            />
           ) : (
             <View style={styles.emptyStateContainer}>
               <Text style={styles.emptyStateText}>
-                No feature posts available
+                No feature posts yet
               </Text>
             </View>
           )}
         </View>
       </ScrollView>
-
       <BottomTabBar currentScreen="social" onChangeScreen={onChangeScreen} />
     </SafeAreaView>
   );

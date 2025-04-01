@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,11 @@ import { ProfileScreenProps } from '../../types/interfaces';
 import BottomTabBar from '../../components/common/BottomTabBar';
 import { styles } from './styles';
 import { launchCamera, launchImageLibrary, ImagePickerResponse, Asset } from 'react-native-image-picker';
+import { uploadToS3 } from '../../utils/s3Upload';
+import { useAuth } from '../../contexts/AuthContext';
+import awsConfig from '../../services/aws-config';
+import { API } from 'aws-amplify';
+import { onCreateFeaturePost } from '../../graphql/subscriptions';
 
 // Custom interface for media items
 interface MediaItem {
@@ -34,10 +39,14 @@ interface UserDetails {
 }
 
 const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
+  const { user } = useAuth();
   const [post, setPost] = useState('');
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [timelapseItems, setTimelapseItems] = useState<Array<{uri: string; type: 'photo' | 'video'}>>([]);
   const [postMedia, setPostMedia] = useState<Asset[]>([]);
+  const [featurePosts, setFeaturePosts] = useState<any[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [isSettingsMenuVisible, setIsSettingsMenuVisible] = useState(false);
   const [isViewDetailsModalVisible, setIsViewDetailsModalVisible] = useState(false);
   const [isEditDetailsModalVisible, setIsEditDetailsModalVisible] = useState(false);
@@ -56,6 +65,24 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   // Temporary state for editing
   const [editableUserDetails, setEditableUserDetails] = useState<UserDetails>(userDetails);
   
+  // Subscribe to real-time updates for feature posts
+  useEffect(() => {
+    if (!user) return;
+
+    const subscription = API.graphql({
+      query: onCreateFeaturePost,
+    }).subscribe({
+      next: ({ value }: any) => {
+        const newPost = value.data.onCreateFeaturePost;
+        setFeaturePosts((prev) => [newPost, ...prev]);
+      },
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user]);
+
   const handleEditProfilePicture = () => {
     Alert.alert(
       'Change Profile Picture',
@@ -525,17 +552,53 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   };
 
   // Handle posting
-  const handlePost = () => {
-    if (post.trim().length > 0 || postMedia.length > 0) {
-      // Here you would normally send the post to a server
-      console.log('Posting:', { text: post, media: postMedia });
-      
-      // Reset the form
+  const handlePost = async () => {
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to create a post');
+      return;
+    }
+
+    if (post.trim().length === 0 && postMedia.length === 0) {
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      setUploadProgress(0);
+
+      let mediaUrls: string[] = [];
+
+      // Upload media files to S3 if any
+      if (postMedia.length > 0) {
+        const uploadPromises = postMedia.map(async (media) => {
+          const file = {
+            uri: media.uri || '',
+            type: media.type || 'image/jpeg',
+            name: media.fileName || `media-${Date.now()}.${media.type?.includes('video') ? 'mp4' : 'jpg'}`,
+          };
+
+          // Upload to S3
+          const s3Url = await uploadToS3(file, 'posts');
+          setUploadProgress(prev => prev + (100 / postMedia.length));
+          return s3Url;
+        });
+
+        mediaUrls = await Promise.all(uploadPromises);
+      }
+
+      // Create feature post using AWS AppSync
+      await awsConfig.createFeaturePost(post, mediaUrls);
+
+      // Reset form
       setPost('');
       setPostMedia([]);
-      
-      // Show confirmation
-      Alert.alert('Success', 'Your post has been shared!');
+      setUploadProgress(0);
+      Alert.alert('Success', 'Post created successfully!');
+    } catch (error) {
+      console.error('Error creating post:', error);
+      Alert.alert('Error', 'Failed to create post. Please try again.');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -872,71 +935,45 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
           
           {/* Existing Posts */}
           <View style={styles.postsContainer}>
-            <View style={styles.postItem}>
-              <View style={styles.postHeader}>
-                <Image 
-                  source={{ uri: 'https://via.placeholder.com/150' }} 
-                  style={styles.postAuthorImage} 
-                />
-                <View style={styles.postAuthorInfo}>
-                  <Text style={styles.postAuthorName}>{userDetails.name}</Text>
-                  <Text style={styles.postTime}>Yesterday at 3:45 PM</Text>
+            {featurePosts.map((post) => (
+              <View key={post.id} style={styles.postItem}>
+                <View style={styles.postHeader}>
+                  <Image 
+                    source={{ uri: profileImage || 'https://via.placeholder.com/150' }} 
+                    style={styles.postAuthorImage} 
+                  />
+                  <View style={styles.postAuthorInfo}>
+                    <Text style={styles.postAuthorName}>{userDetails.name}</Text>
+                    <Text style={styles.postTime}>
+                      {post.createdAt?.toDate().toLocaleDateString()}
+                    </Text>
+                  </View>
+                </View>
+                
+                <View style={styles.postContent}>
+                  <Text style={styles.postText}>{post.text}</Text>
+                  {post.mediaUrls?.map((url: string, index: number) => (
+                    <Image 
+                      key={index}
+                      source={{ uri: url }} 
+                      style={styles.postImage} 
+                    />
+                  ))}
+                </View>
+                
+                <View style={styles.postActionsRow}>
+                  <TouchableOpacity style={styles.postAction}>
+                    <Text style={styles.actionIcon}>❤️</Text>
+                    <Text style={styles.actionText}>{post.likes} Likes</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity style={styles.postAction}>
+                    <Text style={styles.actionIcon}>💬</Text>
+                    <Text style={styles.actionText}>{post.comments?.length || 0} Comments</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-              
-              <View style={styles.postContent}>
-                <Text style={styles.postText}>
-                  This is an example post showing how feature posts will look like in the profile.
-                </Text>
-                <Image 
-                  source={{ uri: 'https://via.placeholder.com/400x300' }} 
-                  style={styles.postImage} 
-                />
-              </View>
-              
-              <View style={styles.postActionsRow}>
-                <TouchableOpacity style={styles.postAction}>
-                  <Text style={styles.actionIcon}>❤️</Text>
-                  <Text style={styles.actionText}>0 Likes</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity style={styles.postAction}>
-                  <Text style={styles.actionIcon}>💬</Text>
-                  <Text style={styles.actionText}>0 Comments</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            
-            <View style={styles.postItem}>
-              <View style={styles.postHeader}>
-                <Image 
-                  source={{ uri: 'https://via.placeholder.com/150' }} 
-                  style={styles.postAuthorImage} 
-                />
-                <View style={styles.postAuthorInfo}>
-                  <Text style={styles.postAuthorName}>{userDetails.name}</Text>
-                  <Text style={styles.postTime}>Last week</Text>
-                </View>
-              </View>
-              
-              <View style={styles.postContent}>
-                <Text style={styles.postText}>
-                  Another example post without an image.
-                </Text>
-              </View>
-              
-              <View style={styles.postActionsRow}>
-                <TouchableOpacity style={styles.postAction}>
-                  <Text style={styles.actionIcon}>❤️</Text>
-                  <Text style={styles.actionText}>0 Likes</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity style={styles.postAction}>
-                  <Text style={styles.actionIcon}>💬</Text>
-                  <Text style={styles.actionText}>0 Comments</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+            ))}
           </View>
         </View>
       </ScrollView>

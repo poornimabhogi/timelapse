@@ -96,114 +96,183 @@ To learn more about React Native, take a look at the following resources:
 - [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
 - [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
 
-# Timelapse App
+# TimeLapse App
 
-A fitness tracking and wellness rewards app built with React Native.
+A React Native application for creating and sharing time-lapse content with social features.
 
-## Cross-Platform Compatibility
+## Architecture
 
-This app is designed to run on both iOS and Android platforms with platform-specific optimizations:
+### AWS Services Integration
 
-### Platform Detection
+1. **Authentication & User Management**
+   - AWS Cognito
+     - User sign-up and sign-in
+     - Social media authentication
+     - JWT token management
+     - User profile attributes
 
-The app uses React Native's Platform API to detect the operating system and adjust UI elements accordingly:
+2. **Data Storage**
+   - AWS DynamoDB Tables
+     - Users Table: User profiles and settings
+     - TimeLapses Table: Time-lapse content metadata
+     - Posts Table: Social media posts and interactions
 
-```javascript
-import { Platform } from 'react-native';
+3. **Media Storage**
+   - AWS S3 Buckets
+     - `timelapse-media-${env}`: Time-lapse media files
+     - `user-content-${env}`: Profile pictures and user media
+     - `post-media-${env}`: Feature post media
 
-// Check if running on iOS
-if (Platform.OS === 'android') {
-  // Android-specific code
-} else {
-  // iOS-specific code
-}
+4. **API Layer**
+   - AWS AppSync (GraphQL)
+     - Real-time subscriptions
+     - CRUD operations
+     - Authentication integration
+
+5. **Media Processing**
+   - AWS Lambda
+     - S3 presigned URL generation
+     - Image/video processing
+     - Thumbnail generation
+
+### Project Structure
+```
+timelapse/
+├── src/
+│   ├── screens/
+│   │   ├── ProfileScreen/     # User profile management
+│   │   ├── TimeLapseScreen/   # Time-lapse creation and viewing
+│   │   └── PostScreen/        # Social media features
+│   ├── components/            # Reusable UI components
+│   ├── utils/
+│   │   └── s3Upload.ts       # S3 upload utilities
+│   ├── config/
+│   │   └── aws-config.ts     # AWS configuration
+│   └── contexts/
+│       └── AuthContext.tsx   # Authentication context
+├── terraform/                # Infrastructure as Code
+│   ├── main.tf
+│   ├── cognito.tf
+│   ├── dynamodb.tf
+│   ├── s3.tf
+│   └── appsync.tf
+└── amplify/                 # Amplify configuration
 ```
 
-### Android Version Detection
+## Setup Instructions
 
-The app includes code to detect specific Android versions, including Android 15:
+### Prerequisites
+- Node.js (v14 or later)
+- React Native CLI
+- AWS CLI
+- Terraform
+- Xcode (for iOS development)
+- Android Studio (for Android development)
 
-```javascript
-// Check if the device is running Android 15 (API level 35)
-if (Platform.OS === 'android' && Platform.Version === 35) {
-  // Android 15 specific code
-  console.log('This is Android 15 specific code');
-  ToastAndroid.show('Running on Android 15', ToastAndroid.SHORT);
-}
-```
-
-### Platform-Specific Styling
-
-Different styling approaches are used for each platform, particularly for shadows:
-
-```javascript
-// Platform-specific styling
-...Platform.select({
-  ios: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-  },
-  android: {
-    elevation: 2,
-  },
-}),
-```
-
-### Safe Area Handling
-
-The app handles safe areas differently on each platform to account for notches, status bars, and home indicators:
-
-- iOS uses SafeAreaView for top and bottom insets
-- Android uses manual padding based on StatusBar.currentHeight
-
-### Feature Flags
-
-Feature flags are implemented to show or hide features based on platform or version:
-
-```javascript
-{isAndroid15 && (
-  <View style={styles.android15Badge}>
-    <Text style={styles.android15Text}>Android 15</Text>
-  </View>
-)}
-```
-
-## Running the App
-
-### iOS
-
-```
-npx react-native run-ios
-```
-
-### Android
-
-```
-npx react-native run-android
-```
-
-## Installation
-
+### Environment Setup
 1. Clone the repository
-2. Install dependencies:
-   ```
-   npm install
-   ```
-3. Install pods for iOS:
-   ```
-   cd ios && pod install && cd ..
-   ```
-4. Start the Metro bundler:
-   ```
-   npx react-native start
-   ```
-5. Run on a specific platform (in a separate terminal):
-   ```
-   npx react-native run-ios
-   ```
-   or
-   ```
-   npx react-native run-android
-   ```
+```bash
+git clone <repository-url>
+cd timelapse
+```
+
+2. Install dependencies
+```bash
+npm install
+```
+
+3. Configure AWS credentials
+```bash
+aws configure
+```
+
+4. Set up environment variables
+```bash
+cp .env.example .env
+# Edit .env with your AWS configuration
+```
+
+### AWS Resources Setup
+1. Initialize Terraform
+```bash
+cd terraform
+terraform init
+```
+
+2. Apply infrastructure
+```bash
+terraform apply
+```
+
+3. Configure Amplify
+```bash
+amplify init
+amplify push
+```
+
+### Development
+1. Start Metro bundler
+```bash
+npm start
+```
+
+2. Run on iOS
+```bash
+npm run ios
+```
+
+3. Run on Android
+```bash
+npm run android
+```
+
+## Features
+
+### TimeLapse Creation
+- Capture time-lapse photos/videos
+- Customize capture intervals
+- Preview and edit time-lapse content
+- Upload to S3 with progress tracking
+
+### Social Features
+- User profiles
+- Follow/unfollow users
+- Like and comment on posts
+- Share time-lapse content
+- Real-time updates using AppSync subscriptions
+
+### Media Management
+- Automatic media optimization
+- Thumbnail generation
+- Progress tracking for uploads
+- Offline support
+
+## Security
+
+### Authentication
+- JWT-based authentication with Cognito
+- Secure token storage
+- Session management
+- Social sign-in support
+
+### Data Protection
+- S3 bucket encryption
+- DynamoDB encryption at rest
+- IAM roles and policies
+- CORS configuration
+
+### API Security
+- AppSync authentication
+- API key management
+- Rate limiting
+- Input validation
+
+## Contributing
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+This project is licensed under the MIT License - see the LICENSE file for details.

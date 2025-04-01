@@ -604,11 +604,6 @@ export const styles = StyleSheet.create({
     width: 28,
     textAlign: 'center',
   },
-  benefitText: {
-    fontSize: 16,
-    color: '#333',
-    flex: 1,
-  },
   timelapseScrollView: {
     marginTop: 8,
   },
