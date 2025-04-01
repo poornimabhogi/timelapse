@@ -59,7 +59,7 @@ export interface SocialScreenProps {
   onChangeScreen: (screen: string) => void;
 }
 
-export interface GamesScreenProps {
+export interface ExtrasScreenProps {
   onChangeScreen: (screen: string) => void;
 }
 

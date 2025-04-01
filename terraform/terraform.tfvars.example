@@ -1,0 +1,26 @@
+# Example tfvars file for Timelapse AWS infrastructure
+# Copy this file to terraform.tfvars and modify as needed
+
+# AWS region
+aws_region = "us-east-1"
+
+# Application name used as prefix for resource naming
+app_name = "timelapse"
+
+# Environment (dev, staging, prod)
+environment = "dev"
+
+# Optional: Override default resource names if needed
+# s3_media_bucket_name = "custom-bucket-name" 
+# dynamodb_user_table_name = "custom-users-table"
+# dynamodb_posts_table_name = "custom-posts-table"
+# cognito_user_pool_name = "custom-user-pool"
+# lambda_media_processor_name = "custom-lambda-name"
+# api_gateway_name = "custom-api-gateway"
+# appsync_api_name = "custom-graphql-api"
+
+# Enable enhanced monitoring (recommended for production)
+enable_enhanced_monitoring = false
+
+# Enable WAF protection (recommended for production)
+enable_waf_protection = false 

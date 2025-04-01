@@ -58,11 +58,11 @@ const BottomTabBar: React.FC<BottomTabBarProps> = ({ currentScreen, onChangeScre
       <TouchableOpacity 
         style={styles.navItem}
         activeOpacity={0.5}
-        onPress={() => handleNavigation('games')}
+        onPress={() => handleNavigation('extras')}
       >
-        <GamesIcon active={currentScreen === 'games'} />
-        <Text style={[styles.navText, currentScreen === 'games' && styles.activeNavText]}>
-          Games
+        <GamesIcon active={currentScreen === 'extras'} />
+        <Text style={[styles.navText, currentScreen === 'extras' && styles.activeNavText]}>
+          Extras
         </Text>
       </TouchableOpacity>
       

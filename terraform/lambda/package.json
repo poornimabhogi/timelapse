@@ -1,0 +1,18 @@
+{
+  "name": "timelapse-media-processor",
+  "version": "1.0.0",
+  "description": "Lambda function for processing media uploads in the Timelapse app",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1353.0",
+    "sharp": "^0.31.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "Timelapse Team",
+  "license": "MIT"
+} 

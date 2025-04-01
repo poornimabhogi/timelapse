@@ -11,9 +11,11 @@
   },
   "dependencies": {
     "@stripe/stripe-react-native": "^0.43.0",
+    "aws-amplify": "^6.14.1",
     "react": "19.0.0",
     "react-native": "0.78.1",
     "react-native-gesture-handler": "^2.25.0",
+    "react-native-image-picker": "^8.2.0",
     "react-native-svg": "^15.11.2"
   },
   "devDependencies": {
