@@ -7,25 +7,33 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
-import { API } from 'aws-amplify';
+import { generateClient } from 'aws-amplify/api';
 import { listTimelapses } from '../../graphql/queries';
 import { onCreateTimelapse } from '../../graphql/subscriptions';
 import TimelapseCard from '../../components/TimelapseCard';
 import { SocialFeedItem } from '../../types';
+import { Observable } from 'zen-observable-ts';
+
+interface SubscriptionResponse {
+  data: {
+    onCreateTimelapse: SocialFeedItem;
+  };
+}
 
 const SocialFeedScreen: React.FC = () => {
   const [timelapses, setTimelapses] = useState<SocialFeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const client = generateClient();
 
   const fetchTimelapses = async () => {
     try {
-      const response = await API.graphql({
+      const response = await client.graphql({
         query: listTimelapses,
         variables: {
           limit: 20,
         },
-      });
+      }) as { data: { listTimelapses: { items: SocialFeedItem[] } } };
 
       const items = response.data.listTimelapses.items;
       setTimelapses(items);
@@ -41,11 +49,11 @@ const SocialFeedScreen: React.FC = () => {
     fetchTimelapses();
 
     // Subscribe to new timelapses
-    const subscription = API.graphql({
+    const subscription = (client.graphql({
       query: onCreateTimelapse,
-    }).subscribe({
-      next: ({ value }: any) => {
-        const newTimelapse = value.data.onCreateTimelapse;
+    }) as unknown as Observable<SubscriptionResponse>).subscribe({
+      next: (result) => {
+        const newTimelapse = result.data.onCreateTimelapse;
         setTimelapses((prev) => [newTimelapse, ...prev]);
       },
     });

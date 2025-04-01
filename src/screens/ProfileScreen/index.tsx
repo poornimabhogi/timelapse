@@ -21,8 +21,9 @@ import { launchCamera, launchImageLibrary, ImagePickerResponse, Asset } from 're
 import { uploadToS3 } from '../../utils/s3Upload';
 import { useAuth } from '../../contexts/AuthContext';
 import awsConfig from '../../services/aws-config';
-import { API } from 'aws-amplify';
+import { generateClient } from 'aws-amplify/api';
 import { onCreateFeaturePost } from '../../graphql/subscriptions';
+import { Observable } from 'zen-observable-ts';
 
 // Custom interface for media items
 interface MediaItem {
@@ -36,6 +37,12 @@ interface UserDetails {
   email: string;
   phone: string;
   bio: string;
+}
+
+interface SubscriptionResponse {
+  data: {
+    onCreateFeaturePost: any;
+  };
 }
 
 const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
@@ -53,6 +60,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   const [isEarnWithUsModalVisible, setIsEarnWithUsModalVisible] = useState(false);
   const [earnWithUsOption, setEarnWithUsOption] = useState<'influencer' | 'seller' | null>(null);
   const [selectedEarnOption, setSelectedEarnOption] = useState<string | null>(null);
+  const client = generateClient();
   
   // Example user details
   const [userDetails, setUserDetails] = useState<UserDetails>({
@@ -69,11 +77,11 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   useEffect(() => {
     if (!user) return;
 
-    const subscription = API.graphql({
+    const subscription = (client.graphql({
       query: onCreateFeaturePost,
-    }).subscribe({
-      next: ({ value }: any) => {
-        const newPost = value.data.onCreateFeaturePost;
+    }) as unknown as Observable<SubscriptionResponse>).subscribe({
+      next: (result) => {
+        const newPost = result.data.onCreateFeaturePost;
         setFeaturePosts((prev) => [newPost, ...prev]);
       },
     });
