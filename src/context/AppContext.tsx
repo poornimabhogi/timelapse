@@ -9,7 +9,9 @@ interface AppContextProps {
   setCurrentScreen: (screen: string) => void;
   toggleWishlist: (product: ProductData) => void;
   addToCart: (product: ProductData) => void;
-  removeFromCart: (product: ProductData) => void;
+  removeFromCart: (product: ProductData, removeAll?: boolean) => void;
+  updateQuantity: (product: ProductData, quantity: number) => void;
+  clearCart: () => void;
 }
 
 const AppContext = createContext<AppContextProps | undefined>(undefined);
@@ -24,7 +26,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const handleScreenChange = useCallback((screen: string) => {
     console.log(`AppContext: setting current screen to ${screen}`);
     // Ensure screen value is valid
-    if (['home', 'shop', 'health', 'profile', 'social', 'games', 'luckyDraw'].includes(screen)) {
+    if (['home', 'shop', 'health', 'profile', 'social', 'games', 'luckyDraw', 'cart'].includes(screen)) {
       setCurrentScreen(screen);
     } else {
       console.warn(`Invalid screen name: ${screen}, defaulting to home`);
@@ -64,23 +66,70 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCartCount(prevCount => prevCount + 1);
   }, [cartItems]);
 
-  const removeFromCart = (product: ProductData) => {
+  const removeFromCart = useCallback((product: ProductData, removeAll: boolean = false) => {
     setCartItems(prevItems => {
       const existingItem = prevItems.find(item => item.id === product.id);
       
-      if (existingItem && existingItem.quantity && existingItem.quantity > 1) {
+      if (removeAll || (existingItem && existingItem.quantity && existingItem.quantity <= 1)) {
+        // Remove item if quantity is 1 or undefined or removeAll is true
+        const updatedItems = prevItems.filter(item => item.id !== product.id);
+        
+        // Update cart count
+        const removedQuantity = existingItem?.quantity || 1;
+        setCartCount(prevCount => Math.max(0, prevCount - removedQuantity));
+        
+        return updatedItems;
+      } else {
         // Reduce quantity if more than 1
-        return prevItems.map(item => 
+        const updatedItems = prevItems.map(item => 
           item.id === product.id 
             ? { ...item, quantity: (item.quantity || 0) - 1 }
             : item
         );
-      } else {
-        // Remove item if quantity is 1 or undefined
-        return prevItems.filter(item => item.id !== product.id);
+        
+        // Update cart count
+        setCartCount(prevCount => Math.max(0, prevCount - 1));
+        
+        return updatedItems;
       }
     });
-  };
+  }, []);
+
+  const updateQuantity = useCallback((product: ProductData, quantity: number) => {
+    if (quantity <= 0) {
+      // Remove item if quantity is zero or negative
+      removeFromCart(product, true);
+      return;
+    }
+    
+    setCartItems(prevItems => {
+      const existingItem = prevItems.find(item => item.id === product.id);
+      
+      if (existingItem) {
+        // Calculate difference in quantity for cart count
+        const quantityDiff = quantity - (existingItem.quantity || 1);
+        
+        // Update cart count
+        setCartCount(prevCount => Math.max(0, prevCount + quantityDiff));
+        
+        // Update the item's quantity
+        return prevItems.map(item => 
+          item.id === product.id 
+            ? { ...item, quantity: quantity }
+            : item
+        );
+      } else {
+        // Add new item with the specified quantity
+        setCartCount(prevCount => prevCount + quantity);
+        return [...prevItems, { ...product, quantity }];
+      }
+    });
+  }, [removeFromCart]);
+
+  const clearCart = useCallback(() => {
+    setCartItems([]);
+    setCartCount(0);
+  }, []);
 
   return (
     <AppContext.Provider
@@ -93,6 +142,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         toggleWishlist,
         addToCart,
         removeFromCart,
+        updateQuantity,
+        clearCart,
       }}
     >
       {children}

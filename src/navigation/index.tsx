@@ -4,6 +4,7 @@ import HomeScreen from '../screens/HomeScreen/index';
 import ShopScreen from '../screens/ShopScreen/index';
 import HealthScreen from '../screens/HealthScreen/index';
 import LuckyDrawScreen from '../screens/LuckyDrawScreen/index';
+import CartScreen from '../screens/CartScreen/index';
 
 const Navigation: React.FC = () => {
   const {
@@ -14,7 +15,9 @@ const Navigation: React.FC = () => {
     cartCount,
     toggleWishlist,
     addToCart,
-    removeFromCart
+    removeFromCart,
+    updateQuantity,
+    clearCart
   } = useAppContext();
 
   // Memoized screen change handler to prevent unnecessary re-renders
@@ -32,32 +35,53 @@ const Navigation: React.FC = () => {
     console.log(`Current screen changed to: ${currentScreen}`);
   }, [currentScreen]);
 
-  // Render the appropriate screen based on current selection
-  switch (currentScreen) {
-    case 'health':
-      return <HealthScreen onChangeScreen={handleChangeScreen} />;
-    case 'shop':
-      return (
-        <ShopScreen 
-          onChangeScreen={handleChangeScreen} 
-          onToggleWishlist={toggleWishlist}
-          wishlistItems={wishlistItems}
-          onAddToCart={addToCart}
-          onRemoveFromCart={removeFromCart}
-          cartItems={cartItems}
-          cartCount={cartCount}
-        />
-      );
-    case 'luckyDraw':
-      return <LuckyDrawScreen onChangeScreen={handleChangeScreen} />;
-    case 'home':
-    default:
-      return (
-        <HomeScreen 
-          onChangeScreen={handleChangeScreen} 
-          wishlistItems={wishlistItems}
-        />
-      );
+  try {
+    // Render the appropriate screen based on current selection
+    switch (currentScreen) {
+      case 'health':
+        return <HealthScreen onChangeScreen={handleChangeScreen} />;
+      case 'shop':
+        return (
+          <ShopScreen 
+            onChangeScreen={handleChangeScreen} 
+            onToggleWishlist={toggleWishlist}
+            wishlistItems={wishlistItems}
+            onAddToCart={addToCart}
+            onRemoveFromCart={removeFromCart}
+            cartItems={cartItems}
+            cartCount={cartCount}
+          />
+        );
+      case 'luckyDraw':
+        return <LuckyDrawScreen onChangeScreen={handleChangeScreen} />;
+      case 'cart':
+        return (
+          <CartScreen 
+            onChangeScreen={handleChangeScreen}
+            cartItems={cartItems}
+            onRemoveFromCart={removeFromCart}
+            onUpdateQuantity={updateQuantity}
+            onClearCart={clearCart}
+          />
+        );
+      case 'home':
+      default:
+        return (
+          <HomeScreen 
+            onChangeScreen={handleChangeScreen} 
+            wishlistItems={wishlistItems}
+          />
+        );
+    }
+  } catch (error) {
+    console.error('Error rendering screen:', error);
+    // Fallback to HomeScreen if there's an error
+    return (
+      <HomeScreen 
+        onChangeScreen={handleChangeScreen} 
+        wishlistItems={wishlistItems}
+      />
+    );
   }
 };
 

@@ -67,6 +67,15 @@ export interface ProfileScreenProps {
   onChangeScreen: (screen: string) => void;
 }
 
+// CartScreen props
+export interface CartScreenProps {
+  onChangeScreen: (screen: string) => void;
+  cartItems: ProductData[];
+  onRemoveFromCart: (product: ProductData, removeAll?: boolean) => void;
+  onUpdateQuantity: (product: ProductData, quantity: number) => void;
+  onClearCart: () => void;
+}
+
 // Component Props
 export interface BottomTabBarProps {
   currentScreen: string;

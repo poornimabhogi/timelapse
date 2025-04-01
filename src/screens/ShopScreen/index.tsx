@@ -194,7 +194,11 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
               </View>
             )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.cartButton}>
+          <TouchableOpacity 
+            style={styles.cartButton}
+            onPress={() => onChangeScreen('cart')}
+            activeOpacity={0.7}
+          >
             <Text style={styles.cartIcon}>🛒</Text>
             {cartCount > 0 && (
               <View style={styles.cartBadge}>

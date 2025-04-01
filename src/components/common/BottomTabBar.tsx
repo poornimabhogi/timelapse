@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { HomeIcon, ShopIcon, HealthIcon, ProfileIcon, SocialIcon, GamesIcon } from './Icons';
+import { useAppContext } from '../../context/AppContext';
 
 interface BottomTabBarProps {
   currentScreen: string;
@@ -8,6 +9,8 @@ interface BottomTabBarProps {
 }
 
 const BottomTabBar: React.FC<BottomTabBarProps> = ({ currentScreen, onChangeScreen }) => {
+  const { cartCount } = useAppContext();
+  
   // Wrapped navigation function for debugging
   const handleNavigation = (screen: string) => {
     console.log(`Navigating to: ${screen}`);
@@ -41,14 +44,22 @@ const BottomTabBar: React.FC<BottomTabBarProps> = ({ currentScreen, onChangeScre
         </Text>
       </TouchableOpacity>
       
-      <TouchableOpacity style={styles.navItem}>
+      <TouchableOpacity 
+        style={styles.navItem}
+        activeOpacity={0.5}
+        onPress={() => handleNavigation('social')}
+      >
         <SocialIcon active={currentScreen === 'social'} />
         <Text style={[styles.navText, currentScreen === 'social' && styles.activeNavText]}>
           Social
         </Text>
       </TouchableOpacity>
       
-      <TouchableOpacity style={styles.navItem}>
+      <TouchableOpacity 
+        style={styles.navItem}
+        activeOpacity={0.5}
+        onPress={() => handleNavigation('games')}
+      >
         <GamesIcon active={currentScreen === 'games'} />
         <Text style={[styles.navText, currentScreen === 'games' && styles.activeNavText]}>
           Games
@@ -66,7 +77,11 @@ const BottomTabBar: React.FC<BottomTabBarProps> = ({ currentScreen, onChangeScre
         </Text>
       </TouchableOpacity>
       
-      <TouchableOpacity style={styles.navItem}>
+      <TouchableOpacity 
+        style={styles.navItem}
+        activeOpacity={0.5}
+        onPress={() => handleNavigation('profile')}
+      >
         <ProfileIcon active={currentScreen === 'profile'} />
         <Text style={[styles.navText, currentScreen === 'profile' && styles.activeNavText]}>
           Profile
@@ -105,7 +120,7 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   activeNavText: {
-    color: '#1E88E5',
+    color: '#6B4EFF',
   },
 });
 
