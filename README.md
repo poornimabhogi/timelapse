@@ -66,7 +66,7 @@ This is one way to run your app — you can also build it directly from Android 
 
 Now that you have successfully run the app, let's make changes!
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
 
 When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
 
@@ -95,3 +95,115 @@ To learn more about React Native, take a look at the following resources:
 - [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
 - [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
 - [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+
+# Timelapse App
+
+A fitness tracking and wellness rewards app built with React Native.
+
+## Cross-Platform Compatibility
+
+This app is designed to run on both iOS and Android platforms with platform-specific optimizations:
+
+### Platform Detection
+
+The app uses React Native's Platform API to detect the operating system and adjust UI elements accordingly:
+
+```javascript
+import { Platform } from 'react-native';
+
+// Check if running on iOS
+if (Platform.OS === 'android') {
+  // Android-specific code
+} else {
+  // iOS-specific code
+}
+```
+
+### Android Version Detection
+
+The app includes code to detect specific Android versions, including Android 15:
+
+```javascript
+// Check if the device is running Android 15 (API level 35)
+if (Platform.OS === 'android' && Platform.Version === 35) {
+  // Android 15 specific code
+  console.log('This is Android 15 specific code');
+  ToastAndroid.show('Running on Android 15', ToastAndroid.SHORT);
+}
+```
+
+### Platform-Specific Styling
+
+Different styling approaches are used for each platform, particularly for shadows:
+
+```javascript
+// Platform-specific styling
+...Platform.select({
+  ios: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+  },
+  android: {
+    elevation: 2,
+  },
+}),
+```
+
+### Safe Area Handling
+
+The app handles safe areas differently on each platform to account for notches, status bars, and home indicators:
+
+- iOS uses SafeAreaView for top and bottom insets
+- Android uses manual padding based on StatusBar.currentHeight
+
+### Feature Flags
+
+Feature flags are implemented to show or hide features based on platform or version:
+
+```javascript
+{isAndroid15 && (
+  <View style={styles.android15Badge}>
+    <Text style={styles.android15Text}>Android 15</Text>
+  </View>
+)}
+```
+
+## Running the App
+
+### iOS
+
+```
+npx react-native run-ios
+```
+
+### Android
+
+```
+npx react-native run-android
+```
+
+## Installation
+
+1. Clone the repository
+2. Install dependencies:
+   ```
+   npm install
+   ```
+3. Install pods for iOS:
+   ```
+   cd ios && pod install && cd ..
+   ```
+4. Start the Metro bundler:
+   ```
+   npx react-native start
+   ```
+5. Run on a specific platform (in a separate terminal):
+   ```
+   npx react-native run-ios
+   ```
+   or
+   ```
+   npx react-native run-android
+   ```
