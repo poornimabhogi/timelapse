@@ -8,7 +8,7 @@ resource "random_id" "suffix" {
 
 # S3 bucket for media storage
 resource "aws_s3_bucket" "media_bucket" {
-  bucket = local.media_bucket_name
+  bucket        = local.media_bucket_name
   force_destroy = var.environment != "prod" # Only allow force destroy in non-prod environments
 
   tags = {
@@ -31,7 +31,7 @@ resource "aws_s3_bucket_public_access_block" "media_bucket_public_access" {
 # Enable bucket versioning for media files in production
 resource "aws_s3_bucket_versioning" "media_bucket_versioning" {
   bucket = aws_s3_bucket.media_bucket.id
-  
+
   versioning_configuration {
     status = var.environment == "prod" ? "Enabled" : "Suspended"
   }
@@ -66,51 +66,37 @@ resource "aws_s3_bucket_lifecycle_configuration" "media_bucket_lifecycle" {
   bucket = aws_s3_bucket.media_bucket.id
 
   rule {
-    id     = "media-transition-to-ia"
+    id     = "cleanup_old_versions"
     status = "Enabled"
 
-    transition {
-      days          = 30
-      storage_class = "STANDARD_IA"
+    filter {
+      prefix = "versions/"
     }
 
-    # In production, move to Glacier after 90 days
-    dynamic "transition" {
-      for_each = var.environment == "prod" ? [1] : []
-      content {
-        days          = 90
-        storage_class = "GLACIER"
-      }
-    }
-
-    # For temporary files in dev/staging environments
-    dynamic "expiration" {
-      for_each = var.environment != "prod" ? [1] : []
-      content {
-        days = 90
-      }
+    noncurrent_version_expiration {
+      noncurrent_days = 30
     }
   }
 }
 
 # Create separate folders in the bucket
 resource "aws_s3_object" "uploads_folder" {
-  bucket = aws_s3_bucket.media_bucket.id
-  key    = "uploads/"
+  bucket       = aws_s3_bucket.media_bucket.id
+  key          = "uploads/"
   content_type = "application/x-directory"
-  acl    = "private"
+  acl          = "private"
 }
 
 resource "aws_s3_object" "processed_folder" {
-  bucket = aws_s3_bucket.media_bucket.id
-  key    = "processed/"
+  bucket       = aws_s3_bucket.media_bucket.id
+  key          = "processed/"
   content_type = "application/x-directory"
-  acl    = "private"
+  acl          = "private"
 }
 
 resource "aws_s3_object" "thumbnails_folder" {
-  bucket = aws_s3_bucket.media_bucket.id
-  key    = "thumbnails/"
+  bucket       = aws_s3_bucket.media_bucket.id
+  key          = "thumbnails/"
   content_type = "application/x-directory"
-  acl    = "private"
+  acl          = "private"
 } 

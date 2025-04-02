@@ -5,13 +5,13 @@ locals {
 # Cognito User Pool for authentication
 resource "aws_cognito_user_pool" "user_pool" {
   name = local.cognito_user_pool_name
-  
+
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
-  
+
   # MFA configuration
   mfa_configuration = var.environment == "prod" ? "OPTIONAL" : "OFF"
-  
+
   # Account recovery settings
   account_recovery_setting {
     recovery_mechanism {
@@ -19,7 +19,7 @@ resource "aws_cognito_user_pool" "user_pool" {
       priority = 1
     }
   }
-  
+
   # Password policy
   password_policy {
     minimum_length                   = 8
@@ -34,7 +34,7 @@ resource "aws_cognito_user_pool" "user_pool" {
   email_configuration {
     email_sending_account = "COGNITO_DEFAULT"
   }
-  
+
   # User schema attributes
   schema {
     name                = "email"
@@ -42,14 +42,14 @@ resource "aws_cognito_user_pool" "user_pool" {
     required            = true
     mutable             = true
   }
-  
+
   schema {
     name                = "name"
     attribute_data_type = "String"
     required            = true
     mutable             = true
   }
-  
+
   schema {
     name                = "profile_picture"
     attribute_data_type = "String"
@@ -60,7 +60,7 @@ resource "aws_cognito_user_pool" "user_pool" {
       min_length = 0
     }
   }
-  
+
   schema {
     name                = "bio"
     attribute_data_type = "String"
@@ -71,7 +71,7 @@ resource "aws_cognito_user_pool" "user_pool" {
       min_length = 0
     }
   }
-  
+
   # Enable advanced security features in production
   dynamic "user_pool_add_ons" {
     for_each = var.environment == "prod" ? [1] : []
@@ -79,13 +79,13 @@ resource "aws_cognito_user_pool" "user_pool" {
       advanced_security_mode = "ENFORCED"
     }
   }
-  
+
   # Lambda triggers for custom authentication workflows
   # Uncomment and configure as needed
   # lambda_config {
   #   pre_sign_up = aws_lambda_function.pre_signup.arn
   # }
-  
+
   tags = {
     Environment = var.environment
     Application = var.app_name
@@ -95,12 +95,12 @@ resource "aws_cognito_user_pool" "user_pool" {
 # App client for the React Native application
 resource "aws_cognito_user_pool_client" "app_client" {
   name = "${var.app_name}-app-client-${var.environment}"
-  
+
   user_pool_id = aws_cognito_user_pool.user_pool.id
-  
+
   # Don't generate a client secret for public clients like mobile apps
   generate_secret = false
-  
+
   # Enable all auth flows for flexibility
   explicit_auth_flows = [
     "ALLOW_USER_PASSWORD_AUTH",
@@ -108,21 +108,21 @@ resource "aws_cognito_user_pool_client" "app_client" {
     "ALLOW_USER_SRP_AUTH",
     "ALLOW_CUSTOM_AUTH"
   ]
-  
+
   # Token validity
-  refresh_token_validity = var.environment == "prod" ? 30 : 60  # days
-  access_token_validity  = 1                                    # hours
-  id_token_validity      = 1                                    # hours
-  
+  refresh_token_validity = var.environment == "prod" ? 30 : 60 # days
+  access_token_validity  = 1                                   # hours
+  id_token_validity      = 1                                   # hours
+
   token_validity_units {
     refresh_token = "days"
     access_token  = "hours"
     id_token      = "hours"
   }
-  
+
   # Prevent user existence errors
   prevent_user_existence_errors = "ENABLED"
-  
+
   # Callback and logout URLs
   callback_urls = [
     "timelapse://callback",
@@ -131,12 +131,12 @@ resource "aws_cognito_user_pool_client" "app_client" {
   logout_urls = [
     "timelapse://signout"
   ]
-  
+
   # OAuth settings
-  allowed_oauth_flows = ["code", "implicit"]
-  allowed_oauth_scopes = ["email", "openid", "profile"]
+  allowed_oauth_flows                  = ["code", "implicit"]
+  allowed_oauth_scopes                 = ["email", "openid", "profile"]
   allowed_oauth_flows_user_pool_client = true
-  supported_identity_providers = ["COGNITO"]
+  supported_identity_providers         = ["COGNITO"]
 }
 
 # Identity Pool for AWS service access
@@ -144,14 +144,14 @@ resource "aws_cognito_identity_pool" "identity_pool" {
   identity_pool_name               = "${var.app_name}-identity-pool-${var.environment}"
   allow_unauthenticated_identities = false
   allow_classic_flow               = false
-  
+
   # Connect to User Pool
   cognito_identity_providers {
     client_id               = aws_cognito_user_pool_client.app_client.id
     provider_name           = aws_cognito_user_pool.user_pool.endpoint
     server_side_token_check = false
   }
-  
+
   tags = {
     Environment = var.environment
     Application = var.app_name
@@ -161,7 +161,7 @@ resource "aws_cognito_identity_pool" "identity_pool" {
 # IAM role for authenticated users
 resource "aws_iam_role" "authenticated_role" {
   name = "${var.app_name}-cognito-authenticated-role-${var.environment}"
-  
+
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -182,7 +182,7 @@ resource "aws_iam_role" "authenticated_role" {
       }
     ]
   })
-  
+
   tags = {
     Environment = var.environment
     Application = var.app_name
@@ -190,9 +190,9 @@ resource "aws_iam_role" "authenticated_role" {
 }
 
 # Identity Pool Role Attachment
-resource "aws_cognito_identity_pool_role_attachment" "identity_pool_role_attachment" {
+resource "aws_cognito_identity_pool_roles_attachment" "identity_pool_role_attachment" {
   identity_pool_id = aws_cognito_identity_pool.identity_pool.id
-  
+
   roles = {
     "authenticated" = aws_iam_role.authenticated_role.arn
   }
@@ -202,7 +202,7 @@ resource "aws_cognito_identity_pool_role_attachment" "identity_pool_role_attachm
 resource "aws_iam_policy" "authenticated_policy" {
   name        = "${var.app_name}-authenticated-policy-${var.environment}"
   description = "Policy for authenticated users in the ${var.app_name} application"
-  
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -231,12 +231,12 @@ resource "aws_iam_policy" "authenticated_policy" {
       },
       # Allow listing bucket contents
       {
-        Effect = "Allow"
-        Action = "s3:ListBucket"
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
         Resource = aws_s3_bucket.media_bucket.arn
         Condition = {
           StringLike = {
-            "s3:prefix": [
+            "s3:prefix" : [
               "uploads/$${cognito-identity.amazonaws.com:sub}/*",
               "processed/$${cognito-identity.amazonaws.com:sub}/*",
               "thumbnails/$${cognito-identity.amazonaws.com:sub}/*",
