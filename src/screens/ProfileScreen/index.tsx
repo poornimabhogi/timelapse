@@ -24,6 +24,9 @@ import awsConfig from '../../services/aws-config';
 import { generateClient } from 'aws-amplify/api';
 import { onCreateFeaturePost } from '../../graphql/subscriptions';
 import { Observable } from 'zen-observable-ts';
+import SellerVerificationModal from './components/SellerVerificationModal';
+import Icon from 'react-native-vector-icons/Ionicons';
+import { SellerVerificationData } from './components/SellerVerificationForm';
 
 // Custom interface for media items
 interface MediaItem {
@@ -60,6 +63,8 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   const [isEarnWithUsModalVisible, setIsEarnWithUsModalVisible] = useState(false);
   const [earnWithUsOption, setEarnWithUsOption] = useState<'influencer' | 'seller' | null>(null);
   const [selectedEarnOption, setSelectedEarnOption] = useState<string | null>(null);
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [sellerStatus, setSellerStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null);
   const client = generateClient();
   
   // Example user details
@@ -777,6 +782,57 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
     );
   };
 
+  const handleStartSelling = () => {
+    setShowVerificationModal(true);
+  };
+
+  const handleVerificationSubmit = async (data: SellerVerificationData) => {
+    try {
+      // Here you would typically send this data to your backend
+      // For now, we'll just simulate a successful submission
+      console.log('Seller verification data submitted:', data);
+      
+      // In a real app, you would store this in your database
+      // For now, we'll just update the local state
+      setSellerStatus('pending');
+      setShowVerificationModal(false);
+      Alert.alert(
+        'Verification Submitted',
+        'Your seller verification request has been submitted. We will review it and get back to you soon.'
+      );
+    } catch (error) {
+      console.error('Error submitting verification:', error);
+      Alert.alert('Error', 'Failed to submit verification request. Please try again.');
+    }
+  };
+
+  const handleDoItLater = () => {
+    setShowVerificationModal(false);
+    setSellerStatus('pending');
+    Alert.alert(
+      'Verification Pending',
+      'You can complete your seller verification later from your profile settings.'
+    );
+  };
+
+  const handleLocalShopPress = () => {
+    if (sellerStatus === 'approved') {
+      // In a real app, you would navigate to the LocalShop screen
+      Alert.alert('Local Shop', 'Opening your local shop');
+    } else if (sellerStatus === 'pending') {
+      Alert.alert(
+        'Verification Pending',
+        'Your seller verification is still under review. We will notify you once it\'s approved.'
+      );
+    } else {
+      Alert.alert(
+        'Seller Verification Required',
+        'Please complete the seller verification process to access your Local Shop.'
+      );
+      setShowVerificationModal(true);
+    }
+  };
+
   return (
     <SafeAreaView style={[
       styles.container,
@@ -785,12 +841,20 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
       {/* Header with Settings */}
       <View style={styles.headerWithSettings}>
         <Text style={styles.headerTitle}>Profile</Text>
-        <TouchableOpacity 
-          style={styles.settingsButton}
-          onPress={toggleSettingsMenu}
-        >
-          <Text style={styles.settingsIcon}>⚙️</Text>
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={handleLocalShopPress}
+          >
+            <Icon name="storefront-outline" size={24} color="#6B4EFF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={toggleSettingsMenu}
+          >
+            <Icon name="settings-outline" size={24} color="#6B4EFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Settings Menu Dropdown */}
@@ -984,6 +1048,28 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
             ))}
           </View>
         </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Seller Account</Text>
+          {sellerStatus === 'approved' ? (
+            <View style={styles.sellerStatusContainer}>
+              <Icon name="checkmark-circle" size={24} color="#4CAF50" />
+              <Text style={styles.sellerStatusText}>Verified Seller</Text>
+            </View>
+          ) : sellerStatus === 'pending' ? (
+            <View style={styles.sellerStatusContainer}>
+              <Icon name="time-outline" size={24} color="#FFA000" />
+              <Text style={styles.sellerStatusText}>Verification Pending</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.startSellingButton}
+              onPress={handleStartSelling}
+            >
+              <Text style={styles.startSellingText}>Start Selling</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </ScrollView>
 
       {/* View Details Modal */}
@@ -1097,6 +1183,13 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
       </Modal>
 
       {renderEarnWithUsModal()}
+
+      <SellerVerificationModal
+        visible={showVerificationModal}
+        onClose={() => setShowVerificationModal(false)}
+        onSubmit={handleVerificationSubmit}
+        onDoItLater={handleDoItLater}
+      />
 
       <BottomTabBar currentScreen="profile" onChangeScreen={onChangeScreen} />
     </SafeAreaView>

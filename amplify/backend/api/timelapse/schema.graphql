@@ -66,6 +66,69 @@ type FeaturePost @model @auth(rules: [{ allow: owner }]) {
   user: User! @hasOne(fields: ["userId"], references: ["id"])
 }
 
+type SellerVerification @model @auth(rules: [{ allow: owner }]) {
+  id: ID!
+  userId: ID!
+  businessName: String!
+  businessType: String!
+  taxId: String!
+  businessAddress: BusinessAddress!
+  contactInfo: ContactInfo!
+  businessDocuments: BusinessDocuments!
+  businessDescription: String!
+  categories: [String!]!
+  estimatedAnnualRevenue: String!
+  socialMedia: SocialMedia
+  status: SellerStatus!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+type BusinessAddress {
+  street: String!
+  city: String!
+  state: String!
+  zipCode: String!
+  country: String!
+}
+
+type ContactInfo {
+  phone: String!
+  email: String!
+  website: String
+}
+
+type BusinessDocuments {
+  businessLicense: String!
+  taxRegistration: String!
+  bankStatement: String!
+}
+
+type SocialMedia {
+  instagram: String
+  facebook: String
+  twitter: String
+}
+
+enum SellerStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+type Product @model @auth(rules: [{ allow: owner }]) {
+  id: ID!
+  name: String!
+  description: String!
+  price: Float!
+  images: [String!]!
+  category: String!
+  sellerId: ID!
+  seller: User! @hasOne(fields: ["sellerId"], references: ["id"])
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
 type Query {
   getSocialFeed(userId: ID!, limit: Int, nextToken: String): ModelTimelapseConnection
   getUserTimelapses(userId: ID!, limit: Int, nextToken: String): ModelTimelapseConnection

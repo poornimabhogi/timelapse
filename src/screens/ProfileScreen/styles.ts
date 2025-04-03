@@ -625,4 +625,42 @@ export const styles = StyleSheet.create({
   cameraIcon: {
     fontSize: 24,
   },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerButton: {
+    padding: 8,
+    marginLeft: 8,
+  },
+  section: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#EFEFEF',
+  },
+  sellerStatusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  sellerStatusText: {
+    marginLeft: 8,
+    fontSize: 16,
+    color: '#333',
+  },
+  startSellingButton: {
+    backgroundColor: '#6B4EFF',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  startSellingText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 }); 
