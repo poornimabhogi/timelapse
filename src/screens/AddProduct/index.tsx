@@ -8,10 +8,13 @@ import {
   ScrollView,
   Alert,
   Image,
+  SafeAreaView,
+  Platform,
+  StatusBar,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
 import { generateClient } from 'aws-amplify/api';
+import BottomTabBar from '../../components/common/BottomTabBar';
 
 interface ProductFormData {
   name: string;
@@ -21,8 +24,11 @@ interface ProductFormData {
   images: string[];
 }
 
-const AddProduct: React.FC = () => {
-  const navigation = useNavigation();
+interface AddProductProps {
+  onChangeScreen: (screen: string) => void;
+}
+
+const AddProduct: React.FC<AddProductProps> = ({ onChangeScreen }) => {
   const { user } = useAuth();
   const [formData, setFormData] = useState<ProductFormData>({
     name: '',
@@ -82,7 +88,7 @@ const AddProduct: React.FC = () => {
       // Simulate API delay
       setTimeout(() => {
         Alert.alert('Success', 'Product added successfully');
-        navigation.goBack();
+        onChangeScreen('localshop');
         setLoading(false);
       }, 1000);
     } catch (error) {
@@ -93,102 +99,111 @@ const AddProduct: React.FC = () => {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={{fontSize: 24}}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Add New Product</Text>
-      </View>
-
-      <View style={styles.form}>
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Product Name *</Text>
-          <TextInput
-            style={styles.input}
-            value={formData.name}
-            onChangeText={(text) => setFormData(prev => ({ ...prev, name: text }))}
-            placeholder="Enter product name"
-          />
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => onChangeScreen('localshop')}
+          >
+            <Text style={{fontSize: 24}}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.title}>Add New Product</Text>
         </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Description *</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={formData.description}
-            onChangeText={(text) => setFormData(prev => ({ ...prev, description: text }))}
-            placeholder="Enter product description"
-            multiline
-            numberOfLines={4}
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Price *</Text>
-          <TextInput
-            style={styles.input}
-            value={formData.price}
-            onChangeText={(text) => setFormData(prev => ({ ...prev, price: text }))}
-            placeholder="Enter price"
-            keyboardType="decimal-pad"
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Category *</Text>
-          <TextInput
-            style={styles.input}
-            value={formData.category}
-            onChangeText={(text) => setFormData(prev => ({ ...prev, category: text }))}
-            placeholder="Enter product category"
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Product Images *</Text>
-          <View style={styles.imageList}>
-            {formData.images.map((uri, index) => (
-              <View key={index} style={styles.imageContainer}>
-                <Image source={{ uri }} style={styles.image} />
-                <TouchableOpacity
-                  style={styles.removeImageButton}
-                  onPress={() => removeImage(index)}
-                >
-                  <Text style={{color: '#FFFFFF', fontSize: 16}}>✕</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-            {formData.images.length < 5 && (
-              <TouchableOpacity
-                style={styles.addImageButton}
-                onPress={pickImage}
-              >
-                <Text style={{fontSize: 24, color: '#6B4EFF'}}>+</Text>
-                <Text style={styles.addImageText}>Add Image</Text>
-              </TouchableOpacity>
-            )}
+        <View style={styles.form}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Product Name *</Text>
+            <TextInput
+              style={styles.input}
+              value={formData.name}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, name: text }))}
+              placeholder="Enter product name"
+            />
           </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Description *</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              value={formData.description}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, description: text }))}
+              placeholder="Enter product description"
+              multiline
+              numberOfLines={4}
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Price *</Text>
+            <TextInput
+              style={styles.input}
+              value={formData.price}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, price: text }))}
+              placeholder="Enter price"
+              keyboardType="decimal-pad"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Category *</Text>
+            <TextInput
+              style={styles.input}
+              value={formData.category}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, category: text }))}
+              placeholder="Enter product category"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Product Images *</Text>
+            <View style={styles.imageList}>
+              {formData.images.map((uri, index) => (
+                <View key={index} style={styles.imageContainer}>
+                  <Image source={{ uri }} style={styles.image} />
+                  <TouchableOpacity
+                    style={styles.removeImageButton}
+                    onPress={() => removeImage(index)}
+                  >
+                    <Text style={{color: '#FFFFFF', fontSize: 16}}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {formData.images.length < 5 && (
+                <TouchableOpacity
+                  style={styles.addImageButton}
+                  onPress={pickImage}
+                >
+                  <Text style={{fontSize: 24, color: '#6B4EFF'}}>+</Text>
+                  <Text style={styles.addImageText}>Add Image</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.submitButton, loading && styles.submitButtonDisabled]}
+            onPress={handleSubmit}
+            disabled={loading}
+          >
+            <Text style={styles.submitButtonText}>
+              {loading ? 'Adding Product...' : 'Add Product'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={[styles.submitButton, loading && styles.submitButtonDisabled]}
-          onPress={handleSubmit}
-          disabled={loading}
-        >
-          <Text style={styles.submitButtonText}>
-            {loading ? 'Adding Product...' : 'Add Product'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+        <BottomTabBar currentScreen="localshop" onChangeScreen={onChangeScreen} />
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
+  },
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',

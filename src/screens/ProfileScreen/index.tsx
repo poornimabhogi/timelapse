@@ -62,9 +62,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   const [isEditDetailsModalVisible, setIsEditDetailsModalVisible] = useState(false);
   const [isEarnWithUsModalVisible, setIsEarnWithUsModalVisible] = useState(false);
   const [earnWithUsOption, setEarnWithUsOption] = useState<'influencer' | 'seller' | null>(null);
-  const [selectedEarnOption, setSelectedEarnOption] = useState<string | null>(null);
-  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [isSeller, setIsSeller] = useState(false);
   const [sellerStatus, setSellerStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null);
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
   const client = generateClient();
   
   // Example user details
@@ -636,68 +636,66 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
         visible={isEarnWithUsModalVisible}
         onRequestClose={() => {
           setIsEarnWithUsModalVisible(false);
-          setEarnWithUsOption(null);
         }}
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {earnWithUsOption 
-                  ? earnWithUsOption === 'influencer' 
-                    ? 'Become an Influencer' 
-                    : 'Become a Seller'
-                  : 'Earn With Us'}
-              </Text>
+              <Text style={styles.modalTitle}>Earn With Us</Text>
               <TouchableOpacity
                 onPress={() => {
                   setIsEarnWithUsModalVisible(false);
-                  setEarnWithUsOption(null);
                 }}
               >
                 <Text style={styles.modalCloseButton}>✕</Text>
               </TouchableOpacity>
             </View>
 
-            {!earnWithUsOption ? (
-              <>
-                <Text style={styles.modalText}>Choose your earning path:</Text>
-                
-                <TouchableOpacity 
-                  style={styles.earnOption}
-                  onPress={() => setEarnWithUsOption('influencer')}
-                >
-                  <View style={styles.earnOptionIconContainer}>
-                    <Text style={styles.earnOptionIcon}>🎬</Text>
-                  </View>
-                  <View style={styles.earnOptionContent}>
-                    <Text style={styles.earnOptionTitle}>Become an Influencer</Text>
-                    <Text style={styles.earnOptionDescription}>Share your world, inspire others, earn rewards</Text>
-                  </View>
-                  <Text style={styles.earnOptionArrow}>›</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.earnOption}
-                  onPress={() => setEarnWithUsOption('seller')}
-                >
-                  <View style={styles.earnOptionIconContainer}>
-                    <Text style={styles.earnOptionIcon}>💼</Text>
-                  </View>
-                  <View style={styles.earnOptionContent}>
-                    <Text style={styles.earnOptionTitle}>Become a Seller</Text>
-                    <Text style={styles.earnOptionDescription}>Turn your passion into profit with your own shop</Text>
-                  </View>
-                  <Text style={styles.earnOptionArrow}>›</Text>
-                </TouchableOpacity>
-              </>
-            ) : earnWithUsOption === 'influencer' ? (
-              <>
+            <Text style={styles.modalText}>Enable your earning options:</Text>
+            
+            <View style={styles.toggleOption}>
+              <View style={styles.toggleOptionContent}>
+                <Text style={styles.toggleOptionTitle}>Influencer Mode</Text>
+                <Text style={styles.toggleOptionDescription}>Share your world, inspire others, earn rewards</Text>
+              </View>
+              <TouchableOpacity 
+                style={[styles.toggleSwitch, earnWithUsOption === 'influencer' && styles.toggleSwitchActive]}
+                onPress={() => {
+                  setEarnWithUsOption(earnWithUsOption === 'influencer' ? null : 'influencer');
+                }}
+              >
+                <View style={[styles.toggleHandle, earnWithUsOption === 'influencer' && styles.toggleHandleActive]} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.toggleOption}>
+              <View style={styles.toggleOptionContent}>
+                <Text style={styles.toggleOptionTitle}>Seller Mode</Text>
+                <Text style={styles.toggleOptionDescription}>Turn your passion into profit with your own shop</Text>
+              </View>
+              <TouchableOpacity 
+                style={[styles.toggleSwitch, isSeller && styles.toggleSwitchActive]}
+                onPress={() => {
+                  setIsSeller(!isSeller);
+                  if (!isSeller && sellerStatus === null) {
+                    // User is enabling seller mode for the first time
+                    setSellerStatus('pending');
+                    Alert.alert(
+                      'Seller Mode Enabled',
+                      'You can complete your seller verification in the Local Shop section.'
+                    );
+                  }
+                }}
+              >
+                <View style={[styles.toggleHandle, isSeller && styles.toggleHandleActive]} />
+              </TouchableOpacity>
+            </View>
+
+            {earnWithUsOption === 'influencer' && (
+              <View style={styles.optionDetailsContainer}>
                 <View style={styles.influencerBanner}>
-                  <Text style={styles.influencerBannerText}>✨ Join Our Creator Program ✨</Text>
+                  <Text style={styles.influencerBannerText}>✨ Creator Program Details ✨</Text>
                 </View>
-                
-                <Text style={styles.modalText}>As an influencer, you'll enjoy:</Text>
                 
                 <View style={styles.benefitsList}>
                   <View style={styles.benefitItem}>
@@ -712,70 +710,20 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
                     <Text style={styles.benefitIcon}>🎯</Text>
                     <Text style={styles.benefitText}>Access exclusive brand partnerships</Text>
                   </View>
-                  <View style={styles.benefitItem}>
-                    <Text style={styles.benefitIcon}>📊</Text>
-                    <Text style={styles.benefitText}>Detailed analytics and insights</Text>
-                  </View>
                 </View>
                 
                 <Text style={styles.eligibilityText}>
                   Minimum requirements: <Text style={styles.eligibilityHighlight}>1,000 followers</Text> and <Text style={styles.eligibilityHighlight}>30+ daily active viewers</Text>
                 </Text>
-                
-                <TouchableOpacity style={styles.modalButton}>
-                  <Text style={styles.modalButtonText}>Apply Now</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.backButton}
-                  onPress={() => setEarnWithUsOption(null)}
-                >
-                  <Text style={styles.backButtonText}>← Back to options</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <View style={styles.sellerBanner}>
-                  <Text style={styles.sellerBannerText}>🛍️ Launch Your Shop Today 🛍️</Text>
-                </View>
-                
-                <Text style={styles.modalText}>As a seller, you'll benefit from:</Text>
-                
-                <View style={styles.benefitsList}>
-                  <View style={styles.benefitItem}>
-                    <Text style={styles.benefitIcon}>🏪</Text>
-                    <Text style={styles.benefitText}>Your own branded storefront</Text>
-                  </View>
-                  <View style={styles.benefitItem}>
-                    <Text style={styles.benefitIcon}>💳</Text>
-                    <Text style={styles.benefitText}>Secure payment processing</Text>
-                  </View>
-                  <View style={styles.benefitItem}>
-                    <Text style={styles.benefitIcon}>📦</Text>
-                    <Text style={styles.benefitText}>Integrated shipping solutions</Text>
-                  </View>
-                  <View style={styles.benefitItem}>
-                    <Text style={styles.benefitIcon}>🔔</Text>
-                    <Text style={styles.benefitText}>Promotion to relevant customers</Text>
-                  </View>
-                </View>
-                
-                <Text style={styles.eligibilityText}>
-                  <Text style={styles.eligibilityHighlight}>No minimum follower count required!</Text> Anyone can become a seller and start earning.
-                </Text>
-                
-                <TouchableOpacity style={styles.modalButton}>
-                  <Text style={styles.modalButtonText}>Start Selling</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.backButton}
-                  onPress={() => setEarnWithUsOption(null)}
-                >
-                  <Text style={styles.backButtonText}>← Back to options</Text>
-                </TouchableOpacity>
-              </>
+              </View>
             )}
+
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => setIsEarnWithUsModalVisible(false)}
+            >
+              <Text style={styles.modalButtonText}>Save Preferences</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -816,20 +764,25 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   };
 
   const handleLocalShopPress = () => {
-    if (sellerStatus === 'approved') {
+    if (sellerStatus === 'approved' || sellerStatus === 'pending') {
       // In a real app, you would navigate to the LocalShop screen
       Alert.alert('Local Shop', 'Opening your local shop');
-    } else if (sellerStatus === 'pending') {
-      Alert.alert(
-        'Verification Pending',
-        'Your seller verification is still under review. We will notify you once it\'s approved.'
-      );
-    } else {
+      // Navigate to LocalShop screen
+      onChangeScreen('localshop');
+    } else if (isSeller) {
+      // If seller toggle is on but they haven't started verification
       Alert.alert(
         'Seller Verification Required',
         'Please complete the seller verification process to access your Local Shop.'
       );
       setShowVerificationModal(true);
+    } else {
+      // Not a seller at all
+      Alert.alert(
+        'Seller Mode Required',
+        'Please enable Seller Mode in your Profile Settings to access the Local Shop features.'
+      );
+      setIsEarnWithUsModalVisible(true);
     }
   };
 
@@ -842,12 +795,14 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
       <View style={styles.headerWithSettings}>
         <Text style={styles.headerTitle}>Profile</Text>
         <View style={styles.headerButtons}>
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={handleLocalShopPress}
-          >
-            <Icon name="storefront-outline" size={24} color="#6B4EFF" />
-          </TouchableOpacity>
+          {isSeller && (
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={handleLocalShopPress}
+            >
+              <Icon name="storefront-outline" size={24} color="#6B4EFF" />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={styles.headerButton}
             onPress={toggleSettingsMenu}
@@ -1047,28 +1002,6 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
               </View>
             ))}
           </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Seller Account</Text>
-          {sellerStatus === 'approved' ? (
-            <View style={styles.sellerStatusContainer}>
-              <Icon name="checkmark-circle" size={24} color="#4CAF50" />
-              <Text style={styles.sellerStatusText}>Verified Seller</Text>
-            </View>
-          ) : sellerStatus === 'pending' ? (
-            <View style={styles.sellerStatusContainer}>
-              <Icon name="time-outline" size={24} color="#FFA000" />
-              <Text style={styles.sellerStatusText}>Verification Pending</Text>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.startSellingButton}
-              onPress={handleStartSelling}
-            >
-              <Text style={styles.startSellingText}>Start Selling</Text>
-            </TouchableOpacity>
-          )}
         </View>
       </ScrollView>
 

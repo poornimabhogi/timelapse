@@ -663,4 +663,53 @@ export const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+
+  // Toggle styles for Earn With Us
+  toggleOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F2F2',
+  },
+  toggleOptionContent: {
+    flex: 1,
+  },
+  toggleOptionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  toggleOptionDescription: {
+    fontSize: 14,
+    color: '#666',
+  },
+  toggleSwitch: {
+    width: 50,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#E0E0E0',
+    padding: 3,
+  },
+  toggleSwitchActive: {
+    backgroundColor: '#6B4EFF',
+  },
+  toggleHandle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  toggleHandleActive: {
+    transform: [{ translateX: 20 }],
+  },
+  optionDetailsContainer: {
+    marginTop: 8,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F2F2F2',
+  },
 }); 

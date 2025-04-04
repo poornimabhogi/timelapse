@@ -26,7 +26,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const handleScreenChange = useCallback((screen: string) => {
     console.log(`AppContext: setting current screen to ${screen}`);
     // Ensure screen value is valid
-    if (['home', 'shop', 'health', 'profile', 'social', 'extras', 'luckyDraw', 'cart'].includes(screen)) {
+    if (['home', 'shop', 'health', 'profile', 'social', 'extras', 'luckyDraw', 'cart', 'localshop', 'addproduct'].includes(screen)) {
       setCurrentScreen(screen);
     } else {
       console.warn(`Invalid screen name: ${screen}, defaulting to home`);

@@ -7,6 +7,8 @@ import LuckyDrawScreen from '../screens/LuckyDrawScreen/index';
 import CartScreen from '../screens/CartScreen/index';
 import SocialScreen from '../screens/SocialScreen/index';
 import ProfileScreen from '../screens/ProfileScreen/index';
+import LocalShop from '../screens/LocalShop/index';
+import AddProduct from '../screens/AddProduct/index';
 
 const Navigation: React.FC = () => {
   const {
@@ -66,12 +68,16 @@ const Navigation: React.FC = () => {
             onClearCart={clearCart}
           />
         );
+      case 'localshop':
+        return <LocalShop onChangeScreen={handleChangeScreen} />;
       case 'social':
         return <SocialScreen onChangeScreen={handleChangeScreen} />;
       case 'profile':
         return <ProfileScreen onChangeScreen={handleChangeScreen} />;
       case 'extras':
         return <SocialScreen onChangeScreen={handleChangeScreen} />;
+      case 'addproduct':
+        return <AddProduct onChangeScreen={handleChangeScreen} />;
       case 'home':
       default:
         return (

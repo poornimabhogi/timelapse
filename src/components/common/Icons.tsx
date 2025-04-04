@@ -1,5 +1,10 @@
 import React from 'react';
 import Svg, { Path, Circle } from 'react-native-svg';
+import { Image } from 'react-native';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+
+// Export components that might be used elsewhere
+export { MaterialIcons, Image };
 
 // Bottom tab icons
 export const HomeIcon = ({ active = false }) => (
