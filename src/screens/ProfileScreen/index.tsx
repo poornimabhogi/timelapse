@@ -983,11 +983,6 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
                     <Text style={styles.videoIndicatorText}>▶</Text>
                   </View>
                 )}
-                {(item.likes && item.likes > 0) ? (
-                  <View style={styles.likeIndicator}>
-                    <Text style={styles.likeCount}>❤️ {item.likes}</Text>
-                  </View>
-                ) : null}
               </TouchableOpacity>
             ))}
             <TouchableOpacity 

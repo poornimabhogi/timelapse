@@ -81,11 +81,6 @@ export const SocialFeedCard: React.FC<SocialFeedCardProps> = ({
       
       <View style={styles.interactionBar}>
         <TouchableOpacity style={styles.interactionButton}>
-          <Text style={styles.interactionIcon}>❤️</Text>
-          <Text style={styles.interactionCount}>{item.likes}</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.interactionButton}>
           <Text style={styles.interactionIcon}>💬</Text>
           <Text style={styles.interactionCount}>{item.comments?.length || 0}</Text>
         </TouchableOpacity>
