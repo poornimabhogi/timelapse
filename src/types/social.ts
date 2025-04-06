@@ -6,18 +6,21 @@ export interface SocialFeedItem {
   content: string;
   mediaUrls: string[];
   likes: number;
-  comments: Array<{
-    id: string;
-    text: string;
-    createdAt: Date;
-    user: {
-      id: string;
-      username: string;
-      name: string;
-      avatar: string;
-    };
-  }>;
+  likedBy?: string[];
+  comments: Comment[];
   createdAt: Date;
   updatedAt: Date;
-  type: 'timelapse' | 'feature';
+  type: 'timelapse' | 'post';
+}
+
+export interface Comment {
+  id: string;
+  text: string;
+  createdAt: Date;
+  user: {
+    id: string;
+    username: string;
+    name: string;
+    avatar: string | null;
+  };
 } 

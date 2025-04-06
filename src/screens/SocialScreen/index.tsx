@@ -25,6 +25,7 @@ import { SocialFeedItem } from '../../types/social';
 import { SocialFeedCard } from '../../components/SocialFeedCard';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { Observable } from 'zen-observable-ts';
+import TimelapseViewer from '../../components/TimelapseViewer';
 
 const client = generateClient();
 
@@ -54,6 +55,8 @@ const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
   const [feedItems, setFeedItems] = useState<SocialFeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedTimelapse, setSelectedTimelapse] = useState<SocialFeedItem | null>(null);
+  const [timelapseViewerVisible, setTimelapseViewerVisible] = useState(false);
 
   const convertToSocialFeedItem = (item: any): SocialFeedItem => {
     return {
@@ -169,6 +172,62 @@ const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
     // TODO: Navigate to user profile
   };
 
+  const handleTimelapsePress = (timelapse: SocialFeedItem) => {
+    setSelectedTimelapse(timelapse);
+    setTimelapseViewerVisible(true);
+  };
+
+  const handleLikeUpdated = (timelapseId: string, newLikeCount: number, userLiked: boolean) => {
+    console.log(`Social screen like updated: ${timelapseId}, count: ${newLikeCount}, liked: ${userLiked}`);
+    
+    // Update feedItems state with the new like count and user like status
+    setFeedItems(prev => 
+      prev.map(item => {
+        if (item.id === timelapseId) {
+          // Update likedBy array based on action
+          let updatedLikedBy = item.likedBy || [];
+          
+          if (userLiked && user && !updatedLikedBy.includes(user.uid)) {
+            // Add user to likedBy if they liked it
+            updatedLikedBy = [...updatedLikedBy, user.uid];
+          } else if (!userLiked && user) {
+            // Remove user from likedBy if they unliked it
+            updatedLikedBy = updatedLikedBy.filter(id => id !== user.uid);
+          }
+          
+          return { 
+            ...item, 
+            likes: newLikeCount,
+            likedBy: updatedLikedBy
+          };
+        }
+        return item;
+      })
+    );
+    
+    // Also update the selectedTimelapse state if this is the one being viewed
+    if (selectedTimelapse && selectedTimelapse.id === timelapseId) {
+      console.log('Updating selected timelapse');
+      // Create updated version of the selected timelapse
+      const updatedLikedBy = selectedTimelapse.likedBy || [];
+      
+      if (userLiked && user && !updatedLikedBy.includes(user.uid)) {
+        updatedLikedBy.push(user.uid);
+      } else if (!userLiked && user) {
+        const index = updatedLikedBy.indexOf(user.uid);
+        if (index !== -1) {
+          updatedLikedBy.splice(index, 1);
+        }
+      }
+      
+      setSelectedTimelapse({
+        ...selectedTimelapse,
+        likes: newLikeCount,
+        likedBy: updatedLikedBy
+      });
+    }
+  };
+
   if (loading) {
     return <LoadingSpinner />;
   }
@@ -258,6 +317,7 @@ const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
                   onUnfollow={() => {
                     setFollowedUsers(prev => prev.filter(id => id !== item.userId));
                   }}
+                  onPress={() => handleTimelapsePress(item)}
                 />
               )}
               keyExtractor={item => item.id}
@@ -272,6 +332,23 @@ const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
         </View>
       </ScrollView>
       <BottomTabBar currentScreen="social" onChangeScreen={onChangeScreen} />
+      {selectedTimelapse && (
+        <TimelapseViewer
+          visible={timelapseViewerVisible}
+          timelapse={{
+            id: selectedTimelapse.id,
+            mediaUrl: selectedTimelapse.mediaUrls[0] || '',
+            likes: selectedTimelapse.likes || 0,
+            timestamp: selectedTimelapse.createdAt.toString(),
+            userId: selectedTimelapse.userId,
+            description: selectedTimelapse.content,
+            likedBy: selectedTimelapse.likedBy,
+          }}
+          onClose={() => setTimelapseViewerVisible(false)}
+          showDeleteButton={false}
+          onLikeUpdated={handleLikeUpdated}
+        />
+      )}
     </SafeAreaView>
   );
 };

@@ -27,12 +27,16 @@ import { Observable } from 'zen-observable-ts';
 import SellerVerificationModal from './components/SellerVerificationModal';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { SellerVerificationData } from './components/SellerVerificationForm';
+import TimelapseViewer from '../../components/TimelapseViewer';
 
 // Custom interface for media items
 interface MediaItem {
   uri: string;
   type: 'photo' | 'video';
   timestamp?: number;
+  likes?: number;
+  isLiked?: boolean;
+  likedBy?: string[];
 }
 
 interface UserDetails {
@@ -52,7 +56,17 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   const { user } = useAuth();
   const [post, setPost] = useState('');
   const [profileImage, setProfileImage] = useState<string | null>(null);
-  const [timelapseItems, setTimelapseItems] = useState<Array<{uri: string; type: 'photo' | 'video'}>>([]);
+  const [timelapseItems, setTimelapseItems] = useState<MediaItem[]>([
+    // Sample data with required props
+    {
+      uri: 'https://via.placeholder.com/150',
+      type: 'photo',
+      timestamp: Date.now(),
+      likes: 0,
+      isLiked: false,
+      likedBy: []
+    }
+  ]);
   const [postMedia, setPostMedia] = useState<Asset[]>([]);
   const [featurePosts, setFeaturePosts] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -754,15 +768,6 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
     }
   };
 
-  const handleDoItLater = () => {
-    setShowVerificationModal(false);
-    setSellerStatus('pending');
-    Alert.alert(
-      'Verification Pending',
-      'You can complete your seller verification later from your profile settings.'
-    );
-  };
-
   const handleLocalShopPress = () => {
     if (sellerStatus === 'approved' || sellerStatus === 'pending') {
       // In a real app, you would navigate to the LocalShop screen
@@ -783,6 +788,88 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
         'Please enable Seller Mode in your Profile Settings to access the Local Shop features.'
       );
       setIsEarnWithUsModalVisible(true);
+    }
+  };
+
+  // Add state for tracking selected timelapse and modal visibility within the component
+  const [selectedTimelapse, setSelectedTimelapse] = useState<MediaItem | null>(null);
+  const [timelapseViewerVisible, setTimelapseViewerVisible] = useState(false);
+
+  // Add a function to handle timelapse selection/view
+  const handleTimelapsePress = (timelapse: MediaItem) => {
+    setSelectedTimelapse(timelapse);
+    setTimelapseViewerVisible(true);
+  };
+
+  // Update the handleLikeUpdated function to handle like toggling
+  const handleLikeUpdated = (timelapseId: string, newLikeCount: number, userLiked: boolean) => {
+    console.log(`Like updated: ${timelapseId}, count: ${newLikeCount}, liked: ${userLiked}`);
+    
+    // Update timelapseItems state with the new like count and user like status
+    setTimelapseItems(prev => 
+      prev.map(item => {
+        if (item.uri === timelapseId) {
+          // Update likedBy array based on action
+          let updatedLikedBy = item.likedBy || [];
+          
+          if (userLiked && user && !updatedLikedBy.includes(user.uid)) {
+            // Add user to likedBy if they liked it
+            updatedLikedBy = [...updatedLikedBy, user.uid];
+          } else if (!userLiked && user) {
+            // Remove user from likedBy if they unliked it
+            updatedLikedBy = updatedLikedBy.filter(id => id !== user.uid);
+          }
+          
+          return { 
+            ...item, 
+            likes: newLikeCount, 
+            isLiked: userLiked,
+            likedBy: updatedLikedBy
+          };
+        }
+        return item;
+      })
+    );
+    
+    // Also update the selectedTimelapse state if this is the one being viewed
+    if (selectedTimelapse && selectedTimelapse.uri === timelapseId) {
+      console.log('Updating selected timelapse in ProfileScreen');
+      
+      // Create updated version of the selected timelapse
+      const updatedLikedBy = selectedTimelapse.likedBy || [];
+      
+      if (userLiked && user && !updatedLikedBy.includes(user.uid)) {
+        updatedLikedBy.push(user.uid);
+      } else if (!userLiked && user) {
+        const index = updatedLikedBy.indexOf(user.uid);
+        if (index !== -1) {
+          updatedLikedBy.splice(index, 1);
+        }
+      }
+      
+      setSelectedTimelapse({
+        ...selectedTimelapse,
+        likes: newLikeCount,
+        isLiked: userLiked,
+        likedBy: updatedLikedBy
+      });
+    }
+  };
+
+  // Update handleTimelapseDelete to forcefully remove the item
+  const handleTimelapseDelete = () => {
+    if (selectedTimelapse) {
+      console.log('Deleting timelapse:', selectedTimelapse.uri);
+      
+      // Remove the item from the state
+      setTimelapseItems(prev => prev.filter(item => item.uri !== selectedTimelapse.uri));
+      
+      // Close the viewer
+      setTimelapseViewerVisible(false);
+      setSelectedTimelapse(null);
+      
+      // Show success message
+      Alert.alert('Success', 'Timelapse deleted successfully');
     }
   };
 
@@ -877,17 +964,31 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
             style={styles.timelapseScrollView}
           >
             {timelapseItems.map((item, index) => (
-              <View key={index} style={styles.timelapseItem}>
+              <TouchableOpacity
+                key={index}
+                style={styles.timelapseItem}
+                onPress={() => handleTimelapsePress(item)}
+              >
                 <Image 
                   source={{ uri: item.uri }} 
                   style={styles.timelapseImage} 
                 />
+                {item.timestamp ? (
+                  <Text style={styles.timelapseTime}>
+                    {new Date(item.timestamp).toLocaleTimeString()}
+                  </Text>
+                ) : null}
                 {item.type === 'video' && (
                   <View style={styles.videoIndicator}>
                     <Text style={styles.videoIndicatorText}>▶</Text>
                   </View>
                 )}
-              </View>
+                {(item.likes && item.likes > 0) ? (
+                  <View style={styles.likeIndicator}>
+                    <Text style={styles.likeCount}>❤️ {item.likes}</Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
             ))}
             <TouchableOpacity 
               style={styles.addTimelapseButton}
@@ -1121,8 +1222,25 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
         visible={showVerificationModal}
         onClose={() => setShowVerificationModal(false)}
         onSubmit={handleVerificationSubmit}
-        onDoItLater={handleDoItLater}
       />
+
+      {selectedTimelapse && (
+        <TimelapseViewer
+          visible={timelapseViewerVisible}
+          timelapse={{
+            id: selectedTimelapse.uri,
+            mediaUrl: selectedTimelapse.uri,
+            likes: selectedTimelapse.likes || 0,
+            timestamp: selectedTimelapse.timestamp?.toString(),
+            userId: user?.uid || 'unknown',
+            likedBy: selectedTimelapse.likedBy,
+          }}
+          onClose={() => setTimelapseViewerVisible(false)}
+          onDelete={handleTimelapseDelete}
+          showDeleteButton={true}
+          onLikeUpdated={handleLikeUpdated}
+        />
+      )}
 
       <BottomTabBar currentScreen="profile" onChangeScreen={onChangeScreen} />
     </SafeAreaView>

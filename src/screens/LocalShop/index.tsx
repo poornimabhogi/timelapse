@@ -17,6 +17,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { generateClient } from 'aws-amplify/api';
 import BottomTabBar from '../../components/common/BottomTabBar';
+import { sendSellerVerificationEmail, saveSellerVerification } from '../../services/aws-config';
 
 // Try importing with full paths - might help with path resolution issues
 import SellerVerificationModal from '../ProfileScreen/components/SellerVerificationModal';
@@ -224,12 +225,51 @@ const LocalShop: React.FC<LocalShopProps> = ({ onChangeScreen }) => {
   const handleVerificationSubmit = async (data: SellerVerificationData) => {
     try {
       console.log('Seller verification data submitted:', data);
-      setSellerStatus('pending');
-      setShowVerificationModal(false);
-      Alert.alert(
-        'Verification Submitted',
-        'Your seller verification request has been submitted. We will review it and get back to you soon.'
-      );
+      
+      // Get current user ID
+      const currentUserId = user?.uid || 'unknown';
+      
+      // Show the user that processing is happening
+      Alert.alert('Processing', 'Submitting your verification request...');
+      
+      // Save verification data to database
+      try {
+        // First, save the verification data to our database
+        await saveSellerVerification(data, currentUserId);
+        
+        // Then, send an email notification to the admin
+        await sendSellerVerificationEmail(data);
+        
+        console.log('Verification data saved and email sent to admin');
+        
+        // Update seller status to pending
+        setSellerStatus('pending');
+        setShowVerificationModal(false);
+        
+        // Show confirmation to user
+        Alert.alert(
+          'Verification Submitted',
+          'Your seller verification request has been submitted. Our admin team will review it and get back to you soon.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Optional additional confirmation about admin notification
+                Alert.alert(
+                  'Admin Notification',
+                  'Verification details have been sent to our admin team at poornima.bhogi1@gmail.com for review.'
+                );
+              }
+            }
+          ]
+        );
+      } catch (apiError) {
+        console.error('Error processing verification request:', apiError);
+        Alert.alert(
+          'Submission Error', 
+          'There was a problem submitting your verification. Please try again.'
+        );
+      }
     } catch (error) {
       console.error('Error submitting verification:', error);
       Alert.alert('Error', 'Failed to submit verification request. Please try again.');

@@ -712,4 +712,20 @@ export const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#F2F2F2',
   },
+
+  // Like indicators for timelapses
+  likeIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderTopLeftRadius: 8,
+  },
+  likeCount: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
 }); 
