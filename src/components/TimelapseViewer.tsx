@@ -12,6 +12,7 @@ import {
   Platform,
   StatusBar,
 } from 'react-native';
+import Video from 'react-native-video';  // Changed from expo-av to react-native-video
 import { useAuth } from '../contexts/AuthContext';
 import { likeTimelapseItem, unlikeTimelapseItem, deleteTimelapseItem } from '../services/aws-config';
 
@@ -27,6 +28,7 @@ interface TimelapseViewerProps {
     userId: string;
     description?: string;
     likedBy?: string[];
+    type?: 'photo' | 'video';  // Add type to distinguish between photos and videos
   };
   onClose: () => void;
   onDelete?: () => void;
@@ -46,6 +48,7 @@ const TimelapseViewer: React.FC<TimelapseViewerProps> = ({
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(timelapse.likes || 0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isVideoReady, setIsVideoReady] = useState(false);
 
   // Enhance the useEffect hook to properly sync the like state
   useEffect(() => {
@@ -120,11 +123,33 @@ const TimelapseViewer: React.FC<TimelapseViewerProps> = ({
         
         {/* Main content - the timelapse image/video */}
         <View style={styles.imageContainer}>
-          <Image
-            source={{ uri: timelapse.mediaUrl }}
-            style={styles.image}
-            resizeMode="contain"
-          />
+          {/* Conditionally render Image or Video based on type */}
+          {!timelapse.type || timelapse.type === 'photo' ? (
+            <Image
+              source={{ uri: timelapse.mediaUrl }}
+              style={styles.image}
+              resizeMode="contain"
+            />
+          ) : (
+            <View style={styles.videoContainer}>
+              {!isVideoReady && (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#FFFFFF" />
+                  <Text style={styles.loadingText}>Loading video...</Text>
+                </View>
+              )}
+              <Video
+                source={{ uri: timelapse.mediaUrl }}
+                style={styles.video}
+                resizeMode="contain"
+                repeat={true}
+                controls={true}
+                paused={false}
+                onLoad={() => setIsVideoReady(true)}
+                onError={(e) => console.error('Video error:', e.error)}
+              />
+            </View>
+          )}
         </View>
         
         {/* Description at the bottom if available */}
@@ -206,6 +231,27 @@ const styles = StyleSheet.create({
     width: width,
     height: height,
     resizeMode: 'contain',
+  },
+  videoContainer: {
+    width: width,
+    height: height,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  video: {
+    width: width,
+    height: height,
+  },
+  loadingContainer: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  loadingText: {
+    color: '#FFFFFF',
+    marginTop: 10,
+    fontSize: 14,
   },
   description: {
     position: 'absolute',

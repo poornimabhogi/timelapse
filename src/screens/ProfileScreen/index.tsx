@@ -13,7 +13,9 @@ import {
   Modal,
   PermissionsAndroid,
   Linking,
+  ActivityIndicator,
 } from 'react-native';
+import Video from 'react-native-video';
 import { ProfileScreenProps } from '../../types/interfaces';
 import BottomTabBar from '../../components/common/BottomTabBar';
 import { styles } from './styles';
@@ -28,6 +30,7 @@ import SellerVerificationModal from './components/SellerVerificationModal';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { SellerVerificationData } from './components/SellerVerificationForm';
 import TimelapseViewer from '../../components/TimelapseViewer';
+// VideoPreview component is implemented but not used in this component
 
 // Custom interface for media items
 interface MediaItem {
@@ -37,6 +40,7 @@ interface MediaItem {
   likes?: number;
   isLiked?: boolean;
   likedBy?: string[];
+  duration?: number;
 }
 
 interface UserDetails {
@@ -291,7 +295,8 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
                 presentationStyle: 'fullScreen',
                 saveToPhotos: true,
                 includeBase64: false,
-              }, (response: ImagePickerResponse) => {
+                durationLimit: 60,
+              }, async (response: ImagePickerResponse) => {
                 if (response.didCancel) {
                   console.log('User cancelled camera');
                   return;
@@ -316,21 +321,58 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
                   return;
                 }
                 if (response.assets && response.assets.length > 0) {
-                  const newMedia = response.assets.map(asset => ({
-                    uri: asset.uri || '',
-                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
-                    fileName: asset.fileName || '',
-                  }));
-                  setTimelapseItems(prev => [...prev, ...newMedia]);
+                  const asset = response.assets[0];
+                  
+                  // Check if this is a video
+                  if (asset.type?.includes('video')) {
+                    setVideoProcessing(true);
+                    try {
+                      // Check video duration
+                      const duration = await checkVideoDuration(asset.uri || '');
+                      
+                      if (duration > 60) { // More than 1 minute
+                        // Show video editing modal
+                        setVideoToProcess(asset);
+                        setIsVideoModalVisible(true);
+                      } else {
+                        // Video is under 1 minute, add directly
+                        const newMedia: MediaItem = {
+                          uri: asset.uri || '',
+                          type: 'video',
+                          timestamp: Date.now(),
+                          likes: 0,
+                          likedBy: [],
+                          duration: duration,
+                        };
+                        setTimelapseItems(prev => [...prev, newMedia]);
+                      }
+                    } catch (error) {
+                      console.error('Error processing video:', error);
+                      Alert.alert('Error', 'Failed to process video. Please try again.');
+                    } finally {
+                      setVideoProcessing(false);
+                    }
+                  } else {
+                    // It's a photo, add directly
+                    const newMedia: MediaItem = {
+                      uri: asset.uri || '',
+                      type: 'photo',
+                      timestamp: Date.now(),
+                      likes: 0,
+                      likedBy: [],
+                    };
+                    setTimelapseItems(prev => [...prev, newMedia]);
+                  }
                 }
               });
             } else {
-              // For Android, we'll use the existing implementation
+              // For Android, similar implementation with video support
               launchCamera({
                 mediaType: 'mixed',
                 quality: 0.8,
                 saveToPhotos: true,
-              }, (response: ImagePickerResponse) => {
+                durationLimit: 60,
+              }, async (response: ImagePickerResponse) => {
                 if (response.didCancel) {
                   console.log('User cancelled camera');
                   return;
@@ -341,12 +383,48 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
                   return;
                 }
                 if (response.assets && response.assets.length > 0) {
-                  const newMedia = response.assets.map(asset => ({
-                    uri: asset.uri || '',
-                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
-                    fileName: asset.fileName || '',
-                  }));
-                  setTimelapseItems(prev => [...prev, ...newMedia]);
+                  const asset = response.assets[0];
+                  
+                  // Check if this is a video
+                  if (asset.type?.includes('video')) {
+                    setVideoProcessing(true);
+                    try {
+                      // Check video duration
+                      const duration = await checkVideoDuration(asset.uri || '');
+                      
+                      if (duration > 60) { // More than 1 minute
+                        // Show video editing modal
+                        setVideoToProcess(asset);
+                        setIsVideoModalVisible(true);
+                      } else {
+                        // Video is under 1 minute, add directly
+                        const newMedia: MediaItem = {
+                          uri: asset.uri || '',
+                          type: 'video',
+                          timestamp: Date.now(),
+                          likes: 0,
+                          likedBy: [],
+                          duration: duration,
+                        };
+                        setTimelapseItems(prev => [...prev, newMedia]);
+                      }
+                    } catch (error) {
+                      console.error('Error processing video:', error);
+                      Alert.alert('Error', 'Failed to process video. Please try again.');
+                    } finally {
+                      setVideoProcessing(false);
+                    }
+                  } else {
+                    // It's a photo, add directly
+                    const newMedia: MediaItem = {
+                      uri: asset.uri || '',
+                      type: 'photo',
+                      timestamp: Date.now(),
+                      likes: 0,
+                      likedBy: [],
+                    };
+                    setTimelapseItems(prev => [...prev, newMedia]);
+                  }
                 }
               });
             }
@@ -361,7 +439,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
                 quality: 0.8,
                 presentationStyle: 'fullScreen',
                 includeBase64: false,
-              }, (response: ImagePickerResponse) => {
+              }, async (response: ImagePickerResponse) => {
                 if (response.didCancel) {
                   console.log('User cancelled image picker');
                   return;
@@ -386,21 +464,57 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
                   return;
                 }
                 if (response.assets && response.assets.length > 0) {
-                  const newMedia = response.assets.map(asset => ({
-                    uri: asset.uri || '',
-                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
-                    fileName: asset.fileName || '',
-                  }));
-                  setTimelapseItems(prev => [...prev, ...newMedia]);
+                  const asset = response.assets[0];
+                  
+                  // Check if this is a video
+                  if (asset.type?.includes('video')) {
+                    setVideoProcessing(true);
+                    try {
+                      // Check video duration
+                      const duration = await checkVideoDuration(asset.uri || '');
+                      
+                      if (duration > 60) { // More than 1 minute
+                        // Show video editing modal
+                        setVideoToProcess(asset);
+                        setIsVideoModalVisible(true);
+                      } else {
+                        // Video is under 1 minute, add directly
+                        const newMedia: MediaItem = {
+                          uri: asset.uri || '',
+                          type: 'video',
+                          timestamp: Date.now(),
+                          likes: 0,
+                          likedBy: [],
+                          duration: duration,
+                        };
+                        setTimelapseItems(prev => [...prev, newMedia]);
+                      }
+                    } catch (error) {
+                      console.error('Error processing video:', error);
+                      Alert.alert('Error', 'Failed to process video. Please try again.');
+                    } finally {
+                      setVideoProcessing(false);
+                    }
+                  } else {
+                    // It's a photo, add directly
+                    const newMedia: MediaItem = {
+                      uri: asset.uri || '',
+                      type: 'photo',
+                      timestamp: Date.now(),
+                      likes: 0,
+                      likedBy: [],
+                    };
+                    setTimelapseItems(prev => [...prev, newMedia]);
+                  }
                 }
               });
             } else {
-              // For Android, we'll use the existing implementation
+              // For Android, similar implementation with video support
               launchImageLibrary({
                 mediaType: 'mixed',
                 quality: 0.8,
                 includeBase64: false,
-              }, (response: ImagePickerResponse) => {
+              }, async (response: ImagePickerResponse) => {
                 if (response.didCancel) {
                   console.log('User cancelled image picker');
                   return;
@@ -411,12 +525,48 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
                   return;
                 }
                 if (response.assets && response.assets.length > 0) {
-                  const newMedia = response.assets.map(asset => ({
-                    uri: asset.uri || '',
-                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
-                    fileName: asset.fileName || '',
-                  }));
-                  setTimelapseItems(prev => [...prev, ...newMedia]);
+                  const asset = response.assets[0];
+                  
+                  // Check if this is a video
+                  if (asset.type?.includes('video')) {
+                    setVideoProcessing(true);
+                    try {
+                      // Check video duration
+                      const duration = await checkVideoDuration(asset.uri || '');
+                      
+                      if (duration > 60) { // More than 1 minute
+                        // Show video editing modal
+                        setVideoToProcess(asset);
+                        setIsVideoModalVisible(true);
+                      } else {
+                        // Video is under 1 minute, add directly
+                        const newMedia: MediaItem = {
+                          uri: asset.uri || '',
+                          type: 'video',
+                          timestamp: Date.now(),
+                          likes: 0,
+                          likedBy: [],
+                          duration: duration,
+                        };
+                        setTimelapseItems(prev => [...prev, newMedia]);
+                      }
+                    } catch (error) {
+                      console.error('Error processing video:', error);
+                      Alert.alert('Error', 'Failed to process video. Please try again.');
+                    } finally {
+                      setVideoProcessing(false);
+                    }
+                  } else {
+                    // It's a photo, add directly
+                    const newMedia: MediaItem = {
+                      uri: asset.uri || '',
+                      type: 'photo',
+                      timestamp: Date.now(),
+                      likes: 0,
+                      likedBy: [],
+                    };
+                    setTimelapseItems(prev => [...prev, newMedia]);
+                  }
                 }
               });
             }
@@ -873,6 +1023,41 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
     }
   };
 
+  // Function to check video duration
+  const checkVideoDuration = async (uri: string): Promise<number> => {
+    // In a real implementation, you would use a library like react-native-video
+    // to get the actual duration. For now, we'll simulate this.
+    return new Promise((resolve) => {
+      // Simulate getting video duration (random between 20 and 180 seconds)
+      setTimeout(() => {
+        const duration = Math.floor(Math.random() * 160) + 20;
+        console.log(`Video duration: ${duration} seconds`);
+        resolve(duration);
+      }, 1000);
+    });
+  };
+
+  // Handle the processed/cropped video
+  const handleProcessedVideo = (processedUri: string, duration: number) => {
+    const newMedia: MediaItem = {
+      uri: processedUri,
+      type: 'video',
+      timestamp: Date.now(),
+      likes: 0,
+      likedBy: [],
+      duration: duration,
+    };
+    
+    setTimelapseItems(prev => [...prev, newMedia]);
+    setIsVideoModalVisible(false);
+    setVideoToProcess(null);
+  };
+
+  // Add state for video processing
+  const [videoToProcess, setVideoToProcess] = useState<Asset | null>(null);
+  const [isVideoModalVisible, setIsVideoModalVisible] = useState(false);
+  const [videoProcessing, setVideoProcessing] = useState(false);
+
   return (
     <SafeAreaView style={[
       styles.container,
@@ -969,15 +1154,29 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
                 style={styles.timelapseItem}
                 onPress={() => handleTimelapsePress(item)}
               >
-                <Image 
-                  source={{ uri: item.uri }} 
-                  style={styles.timelapseImage} 
-                />
+                {item.type === 'photo' ? (
+                  <Image 
+                    source={{ uri: item.uri }} 
+                    style={styles.timelapseImage} 
+                  />
+                ) : (
+                  <Video
+                    source={{ uri: item.uri }}
+                    style={styles.timelapseImage}
+                    resizeMode="cover"
+                    repeat={true}
+                    muted={true}
+                    playInBackground={false}
+                    paused={false}
+                  />
+                )}
+                
                 {item.timestamp ? (
                   <Text style={styles.timelapseTime}>
                     {new Date(item.timestamp).toLocaleTimeString()}
                   </Text>
                 ) : null}
+                
                 {item.type === 'video' && (
                   <View style={styles.videoIndicator}>
                     <Text style={styles.videoIndicatorText}>▶</Text>
@@ -1237,9 +1436,143 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
         />
       )}
 
+      {/* Video Processing Modal */}
+      {videoToProcess && (
+        <Modal
+          animationType="slide"
+          transparent={false}
+          visible={isVideoModalVisible}
+          onRequestClose={() => setIsVideoModalVisible(false)}
+        >
+          <View style={videoModalStyles.container}>
+            <View style={videoModalStyles.header}>
+              <Text style={videoModalStyles.title}>Trim Video</Text>
+              <Text style={videoModalStyles.subtitle}>
+                Videos must be 1 minute or less. Trim your video to continue.
+              </Text>
+            </View>
+            
+            <View style={videoModalStyles.videoPreview}>
+              <Video
+                source={{ uri: videoToProcess.uri || '' }}
+                style={videoModalStyles.videoPlayer}
+                resizeMode="contain"
+                repeat={true}
+                muted={false}
+                paused={false}
+              />
+            </View>
+            
+            <View style={videoModalStyles.footer}>
+              <TouchableOpacity 
+                style={videoModalStyles.cancelButton}
+                onPress={() => {
+                  setIsVideoModalVisible(false);
+                  setVideoToProcess(null);
+                }}
+              >
+                <Text style={videoModalStyles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={videoModalStyles.postButton}
+                onPress={() => {
+                  // Simulate trimming by using original video with a fixed duration
+                  handleProcessedVideo(videoToProcess.uri || '', 60); 
+                }}
+              >
+                <Text style={videoModalStyles.postButtonText}>Post</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
+      
+      {/* Loading indicator for video processing */}
+      {videoProcessing && (
+        <View style={videoModalStyles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#6B4EFF" />
+          <Text style={videoModalStyles.loadingText}>Processing video...</Text>
+        </View>
+      )}
+
       <BottomTabBar currentScreen="profile" onChangeScreen={onChangeScreen} />
     </SafeAreaView>
   );
 };
+
+// Styles for the video modal
+const videoModalStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000',
+    padding: 16,
+  },
+  header: {
+    paddingTop: Platform.OS === 'ios' ? 44 : 16,
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#CCC',
+  },
+  videoPreview: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  videoPlayer: {
+    width: '100%',
+    height: '70%',
+    borderRadius: 12,
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
+  },
+  cancelButton: {
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  cancelButtonText: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  postButton: {
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: '#6B4EFF',
+  },
+  postButtonText: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#FFF',
+    marginTop: 16,
+    fontSize: 16,
+  }
+});
 
 export default ProfileScreen; 
