@@ -224,7 +224,6 @@ resource "aws_appsync_resolver" "list_followed_posts" {
   api_id      = aws_appsync_graphql_api.timelapse_api.id
   type        = "Query"
   field       = "listFollowedPosts"
-  data_source = aws_appsync_datasource.follows_datasource.name
 
   request_template = <<EOF
 {

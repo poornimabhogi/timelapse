@@ -264,9 +264,9 @@ resource "aws_iam_policy" "authenticated_policy" {
           aws_dynamodb_table.interactions_table.arn
         ]
         Condition = {
-          ForAllValues:StringEquals = {
-            "dynamodb:LeadingKeys": ["$${cognito-identity.amazonaws.com:sub}"]
-          }
+            "ForAllValues:StringEquals" = {
+             "dynamodb:LeadingKeys": ["$${cognito-identity.amazonaws.com:sub}"]
+            }
         }
       },
       # Read-only access to other users' public data
@@ -301,7 +301,7 @@ resource "aws_iam_policy" "authenticated_policy" {
           "${aws_dynamodb_table.follows_table.arn}/index/*"
         ]
         Condition = {
-          ForAllValues:StringEquals = {
+          "ForAllValues:StringEquals" = {
             "dynamodb:LeadingKeys": ["$${cognito-identity.amazonaws.com:sub}"]
           }
         }
