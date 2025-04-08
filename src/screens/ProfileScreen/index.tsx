@@ -57,7 +57,7 @@ interface SubscriptionResponse {
 }
 
 const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
-  const { user } = useAuth();
+  const { user, setPhotoPickerActive } = useAuth();
   const [post, setPost] = useState('');
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [timelapseItems, setTimelapseItems] = useState<MediaItem[]>([
@@ -281,451 +281,481 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
 
   // Update your media handling functions
   const handleTimelapseMedia = () => {
-    Alert.alert(
-      'Add Media',
-      'Choose option',
-      [
-        { 
-          text: 'Take Photo/Video', 
-          onPress: () => {
-            if (Platform.OS === 'ios') {
-              launchCamera({
-                mediaType: 'mixed',
-                quality: 0.8,
-                presentationStyle: 'fullScreen',
-                saveToPhotos: true,
-                includeBase64: false,
-                durationLimit: 60,
-              }, async (response: ImagePickerResponse) => {
-                if (response.didCancel) {
-                  console.log('User cancelled camera');
-                  return;
-                }
-                if (response.errorCode) {
-                  console.log('Camera Error: ', response.errorMessage);
-                  Alert.alert(
-                    'Camera Access Required',
-                    'Please enable camera access in your device settings to take photos and videos.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      { 
-                        text: 'Open Settings', 
-                        onPress: () => {
-                          if (Platform.OS === 'ios') {
-                            Linking.openURL('app-settings:');
+    try {
+      // Set photo picker active flag before opening the picker
+      if (Platform.OS === 'android') {
+        setPhotoPickerActive(true);
+      }
+      
+      Alert.alert(
+        'Add Media',
+        'Choose option',
+        [
+          { 
+            text: 'Take Photo/Video', 
+            onPress: () => {
+              if (Platform.OS === 'ios') {
+                launchCamera({
+                  mediaType: 'mixed',
+                  quality: 0.8,
+                  presentationStyle: 'fullScreen',
+                  saveToPhotos: true,
+                  includeBase64: false,
+                  durationLimit: 60,
+                }, async (response: ImagePickerResponse) => {
+                  if (response.didCancel) {
+                    console.log('User cancelled camera');
+                    return;
+                  }
+                  if (response.errorCode) {
+                    console.log('Camera Error: ', response.errorMessage);
+                    Alert.alert(
+                      'Camera Access Required',
+                      'Please enable camera access in your device settings to take photos and videos.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                          text: 'Open Settings', 
+                          onPress: () => {
+                            if (Platform.OS === 'ios') {
+                              Linking.openURL('app-settings:');
+                            }
                           }
                         }
-                      }
-                    ]
-                  );
-                  return;
-                }
-                if (response.assets && response.assets.length > 0) {
-                  const asset = response.assets[0];
-                  
-                  // Check if this is a video
-                  if (asset.type?.includes('video')) {
-                    setVideoProcessing(true);
-                    try {
-                      // Check video duration
-                      const duration = await checkVideoDuration(asset.uri || '');
-                      
-                      if (duration > 60) { // More than 1 minute
-                        // Show video editing modal
-                        setVideoToProcess(asset);
-                        setIsVideoModalVisible(true);
-                      } else {
-                        // Video is under 1 minute, add directly
-                        const newMedia: MediaItem = {
-                          uri: asset.uri || '',
-                          type: 'video',
-                          timestamp: Date.now(),
-                          likes: 0,
-                          likedBy: [],
-                          duration: duration,
-                        };
-                        setTimelapseItems(prev => [...prev, newMedia]);
-                      }
-                    } catch (error) {
-                      console.error('Error processing video:', error);
-                      Alert.alert('Error', 'Failed to process video. Please try again.');
-                    } finally {
-                      setVideoProcessing(false);
-                    }
-                  } else {
-                    // It's a photo, add directly
-                    const newMedia: MediaItem = {
-                      uri: asset.uri || '',
-                      type: 'photo',
-                      timestamp: Date.now(),
-                      likes: 0,
-                      likedBy: [],
-                    };
-                    setTimelapseItems(prev => [...prev, newMedia]);
+                      ]
+                    );
+                    return;
                   }
-                }
-              });
-            } else {
-              // For Android, similar implementation with video support
-              launchCamera({
-                mediaType: 'mixed',
-                quality: 0.8,
-                saveToPhotos: true,
-                durationLimit: 60,
-              }, async (response: ImagePickerResponse) => {
-                if (response.didCancel) {
-                  console.log('User cancelled camera');
-                  return;
-                }
-                if (response.errorCode) {
-                  console.log('Camera Error: ', response.errorMessage);
-                  Alert.alert('Error', 'Failed to access camera. Please check your permissions.');
-                  return;
-                }
-                if (response.assets && response.assets.length > 0) {
-                  const asset = response.assets[0];
-                  
-                  // Check if this is a video
-                  if (asset.type?.includes('video')) {
-                    setVideoProcessing(true);
-                    try {
-                      // Check video duration
-                      const duration = await checkVideoDuration(asset.uri || '');
-                      
-                      if (duration > 60) { // More than 1 minute
-                        // Show video editing modal
-                        setVideoToProcess(asset);
-                        setIsVideoModalVisible(true);
-                      } else {
-                        // Video is under 1 minute, add directly
-                        const newMedia: MediaItem = {
-                          uri: asset.uri || '',
-                          type: 'video',
-                          timestamp: Date.now(),
-                          likes: 0,
-                          likedBy: [],
-                          duration: duration,
-                        };
-                        setTimelapseItems(prev => [...prev, newMedia]);
+                  if (response.assets && response.assets.length > 0) {
+                    const asset = response.assets[0];
+                    
+                    // Check if this is a video
+                    if (asset.type?.includes('video')) {
+                      setVideoProcessing(true);
+                      try {
+                        // Check video duration
+                        const duration = await checkVideoDuration(asset.uri || '');
+                        
+                        if (duration > 60) { // More than 1 minute
+                          // Show video editing modal
+                          setVideoToProcess(asset);
+                          setIsVideoModalVisible(true);
+                        } else {
+                          // Video is under 1 minute, add directly
+                          const newMedia: MediaItem = {
+                            uri: asset.uri || '',
+                            type: 'video',
+                            timestamp: Date.now(),
+                            likes: 0,
+                            likedBy: [],
+                            duration: duration,
+                          };
+                          setTimelapseItems(prev => [...prev, newMedia]);
+                        }
+                      } catch (error) {
+                        console.error('Error processing video:', error);
+                        Alert.alert('Error', 'Failed to process video. Please try again.');
+                      } finally {
+                        setVideoProcessing(false);
                       }
-                    } catch (error) {
-                      console.error('Error processing video:', error);
-                      Alert.alert('Error', 'Failed to process video. Please try again.');
-                    } finally {
-                      setVideoProcessing(false);
+                    } else {
+                      // It's a photo, add directly
+                      const newMedia: MediaItem = {
+                        uri: asset.uri || '',
+                        type: 'photo',
+                        timestamp: Date.now(),
+                        likes: 0,
+                        likedBy: [],
+                      };
+                      setTimelapseItems(prev => [...prev, newMedia]);
                     }
-                  } else {
-                    // It's a photo, add directly
-                    const newMedia: MediaItem = {
-                      uri: asset.uri || '',
-                      type: 'photo',
-                      timestamp: Date.now(),
-                      likes: 0,
-                      likedBy: [],
-                    };
-                    setTimelapseItems(prev => [...prev, newMedia]);
                   }
-                }
-              });
+                });
+              } else {
+                // For Android, similar implementation with video support
+                launchCamera({
+                  mediaType: 'mixed',
+                  quality: 0.8,
+                  saveToPhotos: true,
+                  durationLimit: 60,
+                }, async (response: ImagePickerResponse) => {
+                  if (response.didCancel) {
+                    console.log('User cancelled camera');
+                    return;
+                  }
+                  if (response.errorCode) {
+                    console.log('Camera Error: ', response.errorMessage);
+                    Alert.alert('Error', 'Failed to access camera. Please check your permissions.');
+                    return;
+                  }
+                  if (response.assets && response.assets.length > 0) {
+                    const asset = response.assets[0];
+                    
+                    // Check if this is a video
+                    if (asset.type?.includes('video')) {
+                      setVideoProcessing(true);
+                      try {
+                        // Check video duration
+                        const duration = await checkVideoDuration(asset.uri || '');
+                        
+                        if (duration > 60) { // More than 1 minute
+                          // Show video editing modal
+                          setVideoToProcess(asset);
+                          setIsVideoModalVisible(true);
+                        } else {
+                          // Video is under 1 minute, add directly
+                          const newMedia: MediaItem = {
+                            uri: asset.uri || '',
+                            type: 'video',
+                            timestamp: Date.now(),
+                            likes: 0,
+                            likedBy: [],
+                            duration: duration,
+                          };
+                          setTimelapseItems(prev => [...prev, newMedia]);
+                        }
+                      } catch (error) {
+                        console.error('Error processing video:', error);
+                        Alert.alert('Error', 'Failed to process video. Please try again.');
+                      } finally {
+                        setVideoProcessing(false);
+                      }
+                    } else {
+                      // It's a photo, add directly
+                      const newMedia: MediaItem = {
+                        uri: asset.uri || '',
+                        type: 'photo',
+                        timestamp: Date.now(),
+                        likes: 0,
+                        likedBy: [],
+                      };
+                      setTimelapseItems(prev => [...prev, newMedia]);
+                    }
+                  }
+                });
+              }
             }
-          }
-        },
-        { 
-          text: 'Choose from Library', 
-          onPress: () => {
-            if (Platform.OS === 'ios') {
-              launchImageLibrary({
-                mediaType: 'mixed',
-                quality: 0.8,
-                presentationStyle: 'fullScreen',
-                includeBase64: false,
-              }, async (response: ImagePickerResponse) => {
-                if (response.didCancel) {
-                  console.log('User cancelled image picker');
-                  return;
-                }
-                if (response.errorCode) {
-                  console.log('ImagePicker Error: ', response.errorMessage);
-                  Alert.alert(
-                    'Photo Library Access Required',
-                    'Please enable photo library access in your device settings to select photos and videos.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      { 
-                        text: 'Open Settings', 
-                        onPress: () => {
-                          if (Platform.OS === 'ios') {
-                            Linking.openURL('app-settings:');
+          },
+          { 
+            text: 'Choose from Library', 
+            onPress: () => {
+              if (Platform.OS === 'ios') {
+                launchImageLibrary({
+                  mediaType: 'mixed',
+                  quality: 0.8,
+                  presentationStyle: 'fullScreen',
+                  includeBase64: false,
+                }, async (response: ImagePickerResponse) => {
+                  if (response.didCancel) {
+                    console.log('User cancelled image picker');
+                    return;
+                  }
+                  if (response.errorCode) {
+                    console.log('ImagePicker Error: ', response.errorMessage);
+                    Alert.alert(
+                      'Photo Library Access Required',
+                      'Please enable photo library access in your device settings to select photos and videos.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                          text: 'Open Settings', 
+                          onPress: () => {
+                            if (Platform.OS === 'ios') {
+                              Linking.openURL('app-settings:');
+                            }
                           }
                         }
-                      }
-                    ]
-                  );
-                  return;
-                }
-                if (response.assets && response.assets.length > 0) {
-                  const asset = response.assets[0];
-                  
-                  // Check if this is a video
-                  if (asset.type?.includes('video')) {
-                    setVideoProcessing(true);
-                    try {
-                      // Check video duration
-                      const duration = await checkVideoDuration(asset.uri || '');
-                      
-                      if (duration > 60) { // More than 1 minute
-                        // Show video editing modal
-                        setVideoToProcess(asset);
-                        setIsVideoModalVisible(true);
-                      } else {
-                        // Video is under 1 minute, add directly
-                        const newMedia: MediaItem = {
-                          uri: asset.uri || '',
-                          type: 'video',
-                          timestamp: Date.now(),
-                          likes: 0,
-                          likedBy: [],
-                          duration: duration,
-                        };
-                        setTimelapseItems(prev => [...prev, newMedia]);
-                      }
-                    } catch (error) {
-                      console.error('Error processing video:', error);
-                      Alert.alert('Error', 'Failed to process video. Please try again.');
-                    } finally {
-                      setVideoProcessing(false);
-                    }
-                  } else {
-                    // It's a photo, add directly
-                    const newMedia: MediaItem = {
-                      uri: asset.uri || '',
-                      type: 'photo',
-                      timestamp: Date.now(),
-                      likes: 0,
-                      likedBy: [],
-                    };
-                    setTimelapseItems(prev => [...prev, newMedia]);
+                      ]
+                    );
+                    return;
                   }
-                }
-              });
-            } else {
-              // For Android, similar implementation with video support
-              launchImageLibrary({
-                mediaType: 'mixed',
-                quality: 0.8,
-                includeBase64: false,
-              }, async (response: ImagePickerResponse) => {
-                if (response.didCancel) {
-                  console.log('User cancelled image picker');
-                  return;
-                }
-                if (response.errorCode) {
-                  console.log('ImagePicker Error: ', response.errorMessage);
-                  Alert.alert('Error', 'Failed to access photo library. Please check your permissions.');
-                  return;
-                }
-                if (response.assets && response.assets.length > 0) {
-                  const asset = response.assets[0];
-                  
-                  // Check if this is a video
-                  if (asset.type?.includes('video')) {
-                    setVideoProcessing(true);
-                    try {
-                      // Check video duration
-                      const duration = await checkVideoDuration(asset.uri || '');
-                      
-                      if (duration > 60) { // More than 1 minute
-                        // Show video editing modal
-                        setVideoToProcess(asset);
-                        setIsVideoModalVisible(true);
-                      } else {
-                        // Video is under 1 minute, add directly
-                        const newMedia: MediaItem = {
-                          uri: asset.uri || '',
-                          type: 'video',
-                          timestamp: Date.now(),
-                          likes: 0,
-                          likedBy: [],
-                          duration: duration,
-                        };
-                        setTimelapseItems(prev => [...prev, newMedia]);
+                  if (response.assets && response.assets.length > 0) {
+                    const asset = response.assets[0];
+                    
+                    // Check if this is a video
+                    if (asset.type?.includes('video')) {
+                      setVideoProcessing(true);
+                      try {
+                        // Check video duration
+                        const duration = await checkVideoDuration(asset.uri || '');
+                        
+                        if (duration > 60) { // More than 1 minute
+                          // Show video editing modal
+                          setVideoToProcess(asset);
+                          setIsVideoModalVisible(true);
+                        } else {
+                          // Video is under 1 minute, add directly
+                          const newMedia: MediaItem = {
+                            uri: asset.uri || '',
+                            type: 'video',
+                            timestamp: Date.now(),
+                            likes: 0,
+                            likedBy: [],
+                            duration: duration,
+                          };
+                          setTimelapseItems(prev => [...prev, newMedia]);
+                        }
+                      } catch (error) {
+                        console.error('Error processing video:', error);
+                        Alert.alert('Error', 'Failed to process video. Please try again.');
+                      } finally {
+                        setVideoProcessing(false);
                       }
-                    } catch (error) {
-                      console.error('Error processing video:', error);
-                      Alert.alert('Error', 'Failed to process video. Please try again.');
-                    } finally {
-                      setVideoProcessing(false);
+                    } else {
+                      // It's a photo, add directly
+                      const newMedia: MediaItem = {
+                        uri: asset.uri || '',
+                        type: 'photo',
+                        timestamp: Date.now(),
+                        likes: 0,
+                        likedBy: [],
+                      };
+                      setTimelapseItems(prev => [...prev, newMedia]);
                     }
-                  } else {
-                    // It's a photo, add directly
-                    const newMedia: MediaItem = {
-                      uri: asset.uri || '',
-                      type: 'photo',
-                      timestamp: Date.now(),
-                      likes: 0,
-                      likedBy: [],
-                    };
-                    setTimelapseItems(prev => [...prev, newMedia]);
                   }
-                }
-              });
+                });
+              } else {
+                // For Android, similar implementation with video support
+                launchImageLibrary({
+                  mediaType: 'mixed',
+                  quality: 0.8,
+                  includeBase64: false,
+                }, async (response: ImagePickerResponse) => {
+                  if (response.didCancel) {
+                    console.log('User cancelled image picker');
+                    return;
+                  }
+                  if (response.errorCode) {
+                    console.log('ImagePicker Error: ', response.errorMessage);
+                    Alert.alert('Error', 'Failed to access photo library. Please check your permissions.');
+                    return;
+                  }
+                  if (response.assets && response.assets.length > 0) {
+                    const asset = response.assets[0];
+                    
+                    // Check if this is a video
+                    if (asset.type?.includes('video')) {
+                      setVideoProcessing(true);
+                      try {
+                        // Check video duration
+                        const duration = await checkVideoDuration(asset.uri || '');
+                        
+                        if (duration > 60) { // More than 1 minute
+                          // Show video editing modal
+                          setVideoToProcess(asset);
+                          setIsVideoModalVisible(true);
+                        } else {
+                          // Video is under 1 minute, add directly
+                          const newMedia: MediaItem = {
+                            uri: asset.uri || '',
+                            type: 'video',
+                            timestamp: Date.now(),
+                            likes: 0,
+                            likedBy: [],
+                            duration: duration,
+                          };
+                          setTimelapseItems(prev => [...prev, newMedia]);
+                        }
+                      } catch (error) {
+                        console.error('Error processing video:', error);
+                        Alert.alert('Error', 'Failed to process video. Please try again.');
+                      } finally {
+                        setVideoProcessing(false);
+                      }
+                    } else {
+                      // It's a photo, add directly
+                      const newMedia: MediaItem = {
+                        uri: asset.uri || '',
+                        type: 'photo',
+                        timestamp: Date.now(),
+                        likes: 0,
+                        likedBy: [],
+                      };
+                      setTimelapseItems(prev => [...prev, newMedia]);
+                    }
+                  }
+                });
+              }
             }
-          }
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    } catch (error) {
+      console.error('Error selecting media:', 
+        typeof error === 'object' ? JSON.stringify(error) : error
+      );
+      Alert.alert(
+        'Error',
+        'Failed to select media. Please try again.',
+      );
+    }
   };
 
   const handleFeaturePostMedia = () => {
-    Alert.alert(
-      'Add Media',
-      'Choose option',
-      [
-        { 
-          text: 'Take Photo/Video', 
-          onPress: () => {
-            if (Platform.OS === 'ios') {
-              launchCamera({
-                mediaType: 'mixed',
-                quality: 0.8,
-                presentationStyle: 'fullScreen',
-                saveToPhotos: true,
-                includeBase64: false,
-              }, (response: ImagePickerResponse) => {
-                if (response.didCancel) {
-                  console.log('User cancelled camera');
-                  return;
-                }
-                if (response.errorCode) {
-                  console.log('Camera Error: ', response.errorMessage);
-                  Alert.alert(
-                    'Camera Access Required',
-                    'Please enable camera access in your device settings to take photos and videos.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      { 
-                        text: 'Open Settings', 
-                        onPress: () => {
-                          if (Platform.OS === 'ios') {
-                            Linking.openURL('app-settings:');
+    try {
+      // Set photo picker active flag before opening the picker
+      if (Platform.OS === 'android') {
+        setPhotoPickerActive(true);
+      }
+      
+      Alert.alert(
+        'Add Media',
+        'Choose option',
+        [
+          { 
+            text: 'Take Photo/Video', 
+            onPress: () => {
+              if (Platform.OS === 'ios') {
+                launchCamera({
+                  mediaType: 'mixed',
+                  quality: 0.8,
+                  presentationStyle: 'fullScreen',
+                  saveToPhotos: true,
+                  includeBase64: false,
+                }, (response: ImagePickerResponse) => {
+                  if (response.didCancel) {
+                    console.log('User cancelled camera');
+                    return;
+                  }
+                  if (response.errorCode) {
+                    console.log('Camera Error: ', response.errorMessage);
+                    Alert.alert(
+                      'Camera Access Required',
+                      'Please enable camera access in your device settings to take photos and videos.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                          text: 'Open Settings', 
+                          onPress: () => {
+                            if (Platform.OS === 'ios') {
+                              Linking.openURL('app-settings:');
+                            }
                           }
                         }
-                      }
-                    ]
-                  );
-                  return;
-                }
-                if (response.assets && response.assets.length > 0) {
-                  const newMedia = response.assets.map(asset => ({
-                    uri: asset.uri || '',
-                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
-                    fileName: asset.fileName || '',
-                  }));
-                  setPostMedia(prev => [...prev, ...newMedia]);
-                }
-              });
-            } else {
-              // For Android, we'll use the existing implementation
-              launchCamera({
-                mediaType: 'mixed',
-                quality: 0.8,
-                saveToPhotos: true,
-              }, (response: ImagePickerResponse) => {
-                if (response.didCancel) {
-                  console.log('User cancelled camera');
-                  return;
-                }
-                if (response.errorCode) {
-                  console.log('Camera Error: ', response.errorMessage);
-                  Alert.alert('Error', 'Failed to access camera. Please check your permissions.');
-                  return;
-                }
-                if (response.assets && response.assets.length > 0) {
-                  const newMedia = response.assets.map(asset => ({
-                    uri: asset.uri || '',
-                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
-                    fileName: asset.fileName || '',
-                  }));
-                  setPostMedia(prev => [...prev, ...newMedia]);
-                }
-              });
+                      ]
+                    );
+                    return;
+                  }
+                  if (response.assets && response.assets.length > 0) {
+                    const newMedia = response.assets.map(asset => ({
+                      uri: asset.uri || '',
+                      type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
+                      fileName: asset.fileName || '',
+                    }));
+                    setPostMedia(prev => [...prev, ...newMedia]);
+                  }
+                });
+              } else {
+                // For Android, we'll use the existing implementation
+                launchCamera({
+                  mediaType: 'mixed',
+                  quality: 0.8,
+                  saveToPhotos: true,
+                }, (response: ImagePickerResponse) => {
+                  if (response.didCancel) {
+                    console.log('User cancelled camera');
+                    return;
+                  }
+                  if (response.errorCode) {
+                    console.log('Camera Error: ', response.errorMessage);
+                    Alert.alert('Error', 'Failed to access camera. Please check your permissions.');
+                    return;
+                  }
+                  if (response.assets && response.assets.length > 0) {
+                    const newMedia = response.assets.map(asset => ({
+                      uri: asset.uri || '',
+                      type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
+                      fileName: asset.fileName || '',
+                    }));
+                    setPostMedia(prev => [...prev, ...newMedia]);
+                  }
+                });
+              }
             }
-          }
-        },
-        { 
-          text: 'Choose from Library', 
-          onPress: () => {
-            if (Platform.OS === 'ios') {
-              launchImageLibrary({
-                mediaType: 'mixed',
-                quality: 0.8,
-                presentationStyle: 'fullScreen',
-                includeBase64: false,
-              }, (response: ImagePickerResponse) => {
-                if (response.didCancel) {
-                  console.log('User cancelled image picker');
-                  return;
-                }
-                if (response.errorCode) {
-                  console.log('ImagePicker Error: ', response.errorMessage);
-                  Alert.alert(
-                    'Photo Library Access Required',
-                    'Please enable photo library access in your device settings to select photos and videos.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      { 
-                        text: 'Open Settings', 
-                        onPress: () => {
-                          if (Platform.OS === 'ios') {
-                            Linking.openURL('app-settings:');
+          },
+          { 
+            text: 'Choose from Library', 
+            onPress: () => {
+              if (Platform.OS === 'ios') {
+                launchImageLibrary({
+                  mediaType: 'mixed',
+                  quality: 0.8,
+                  presentationStyle: 'fullScreen',
+                  includeBase64: false,
+                }, (response: ImagePickerResponse) => {
+                  if (response.didCancel) {
+                    console.log('User cancelled image picker');
+                    return;
+                  }
+                  if (response.errorCode) {
+                    console.log('ImagePicker Error: ', response.errorMessage);
+                    Alert.alert(
+                      'Photo Library Access Required',
+                      'Please enable photo library access in your device settings to select photos and videos.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                          text: 'Open Settings', 
+                          onPress: () => {
+                            if (Platform.OS === 'ios') {
+                              Linking.openURL('app-settings:');
+                            }
                           }
                         }
-                      }
-                    ]
-                  );
-                  return;
-                }
-                if (response.assets && response.assets.length > 0) {
-                  const newMedia = response.assets.map(asset => ({
-                    uri: asset.uri || '',
-                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
-                    fileName: asset.fileName || '',
-                  }));
-                  setPostMedia(prev => [...prev, ...newMedia]);
-                }
-              });
-            } else {
-              // For Android, we'll use the existing implementation
-              launchImageLibrary({
-                mediaType: 'mixed',
-                quality: 0.8,
-                includeBase64: false,
-              }, (response: ImagePickerResponse) => {
-                if (response.didCancel) {
-                  console.log('User cancelled image picker');
-                  return;
-                }
-                if (response.errorCode) {
-                  console.log('ImagePicker Error: ', response.errorMessage);
-                  Alert.alert('Error', 'Failed to access photo library. Please check your permissions.');
-                  return;
-                }
-                if (response.assets && response.assets.length > 0) {
-                  const newMedia = response.assets.map(asset => ({
-                    uri: asset.uri || '',
-                    type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
-                    fileName: asset.fileName || '',
-                  }));
-                  setPostMedia(prev => [...prev, ...newMedia]);
-                }
-              });
+                      ]
+                    );
+                    return;
+                  }
+                  if (response.assets && response.assets.length > 0) {
+                    const newMedia = response.assets.map(asset => ({
+                      uri: asset.uri || '',
+                      type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
+                      fileName: asset.fileName || '',
+                    }));
+                    setPostMedia(prev => [...prev, ...newMedia]);
+                  }
+                });
+              } else {
+                // For Android, we'll use the existing implementation
+                launchImageLibrary({
+                  mediaType: 'mixed',
+                  quality: 0.8,
+                  includeBase64: false,
+                }, (response: ImagePickerResponse) => {
+                  if (response.didCancel) {
+                    console.log('User cancelled image picker');
+                    return;
+                  }
+                  if (response.errorCode) {
+                    console.log('ImagePicker Error: ', response.errorMessage);
+                    Alert.alert('Error', 'Failed to access photo library. Please check your permissions.');
+                    return;
+                  }
+                  if (response.assets && response.assets.length > 0) {
+                    const newMedia = response.assets.map(asset => ({
+                      uri: asset.uri || '',
+                      type: asset.type?.includes('video') ? 'video' as const : 'photo' as const,
+                      fileName: asset.fileName || '',
+                    }));
+                    setPostMedia(prev => [...prev, ...newMedia]);
+                  }
+                });
+              }
             }
-          }
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    } catch (error) {
+      console.error('Error selecting media:', 
+        typeof error === 'object' ? JSON.stringify(error) : error
+      );
+      Alert.alert(
+        'Error',
+        'Failed to select media. Please try again.',
+      );
+    }
   };
 
   // Handle posting

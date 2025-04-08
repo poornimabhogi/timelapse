@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Amplify } from 'aws-amplify';
 import { signIn, signUp, confirmSignUp, signOut, fetchUserAttributes, getCurrentUser, resetPassword, confirmResetPassword } from 'aws-amplify/auth';
 import { configureAmplify } from '../services/aws-config';
+import { Platform, AppState, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Configure Amplify when the context is used
 configureAmplify();
@@ -23,6 +25,7 @@ interface AuthContextType {
   resetPassword: (username: string) => Promise<any>;
   confirmResetPassword: (username: string, code: string, newPassword: string) => Promise<any>;
   continueAsGuest: () => void;
+  setPhotoPickerActive: (active: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -35,6 +38,7 @@ const AuthContext = createContext<AuthContextType>({
   resetPassword: async () => {},
   confirmResetPassword: async () => {},
   continueAsGuest: () => {},
+  setPhotoPickerActive: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -42,11 +46,48 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [forceRender, setForceRender] = useState(0);
+  // Add a ref to track if app background state is due to photo picker
+  const photoPickerActive = useRef<boolean>(false);
+  const lastAppState = useRef<string>(AppState.currentState);
+
+  // Export the photo picker flag setter function so it can be called from other components
+  const setPhotoPickerActive = (active: boolean) => {
+    console.log(`Photo picker active: ${active}`);
+    photoPickerActive.current = active;
+  };
 
   useEffect(() => {
     // Check current authenticated user
     checkUser();
-  }, []);
+
+    // For Android, listen to app state changes to refresh auth state
+    if (Platform.OS === 'android') {
+      const subscription = AppState.addEventListener('change', nextAppState => {
+        console.log(`App state changed from ${lastAppState.current} to ${nextAppState}`);
+        
+        // Only handle auth refresh if returning to active state from background
+        if (nextAppState === 'active' && 
+            (lastAppState.current === 'background' || lastAppState.current === 'inactive')) {
+          
+          // Check if this is returning from photo picker
+          if (photoPickerActive.current) {
+            console.log('Returning from photo picker, not refreshing auth');
+            photoPickerActive.current = false;
+          } else {
+            console.log('App returned to foreground, refreshing auth state');
+            checkUser();
+          }
+        }
+        
+        lastAppState.current = nextAppState;
+      });
+
+      return () => {
+        subscription.remove();
+      };
+    }
+  }, [forceRender]);
 
   async function checkUser() {
     try {
@@ -127,11 +168,91 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Sign out
   async function handleSignOut() {
     try {
-      await signOut();
-      setUser(null);
+      // Set loading state immediately
+      setLoading(true);
+      console.log('Signing out user...');
+      
+      if (Platform.OS === 'android') {
+        console.log('AGGRESSIVE Android-specific logout handling');
+        
+        try {
+          // 1. Call AWS Amplify signOut
+          await signOut();
+        } catch (signOutError) {
+          console.log('Error during signOut, continuing with forced logout:', signOutError);
+        }
+        
+        // 2. Force clear user immediately
+        setUser(null);
+        
+        // 3. Clear all auth-related AsyncStorage keys
+        try {
+          console.log('Clearing AsyncStorage auth data');
+          const keys = await AsyncStorage.getAllKeys();
+          const authKeys = keys.filter(key => 
+            key.includes('auth') || 
+            key.includes('CognitoIdentityId') || 
+            key.includes('token') || 
+            key.includes('amplify') ||
+            key.includes('user') ||
+            key.includes('accessToken') ||
+            key.includes('idToken') ||
+            key.includes('refreshToken')
+          );
+          
+          if (authKeys.length > 0) {
+            console.log('Removing auth keys:', authKeys);
+            await AsyncStorage.multiRemove(authKeys);
+          }
+        } catch (storageError) {
+          console.log('Error clearing AsyncStorage:', storageError);
+        }
+        
+        // 4. Use multiple state updates with delays to ensure Android UI updates
+        setTimeout(() => {
+          console.log('Forcing complete app state reset');
+          // Force a complete re-render of the component tree with two consecutive updates
+          setForceRender(prev => prev + 1);
+          
+          setTimeout(() => {
+            console.log('Setting loading to false');
+            // Complete the loading state
+            setLoading(false);
+            
+            // Force another render after a short delay
+            setTimeout(() => {
+              console.log('Final forced render');
+              setForceRender(prev => prev + 2);
+            }, 300);
+          }, 300);
+        }, 300);
+      } else {
+        // iOS handling (already working)
+        try {
+          await signOut();
+        } catch (error) {
+          console.log('Error signing out on iOS, forcing logout anyway:', error);
+        }
+        
+        setTimeout(() => {
+          setUser(null);
+          setLoading(false);
+          console.log('User signed out successfully on iOS');
+        }, 100);
+      }
     } catch (error) {
-      console.log('Error signing out', error);
-      throw error;
+      console.log('Error in handleSignOut:', error);
+      
+      // Even on error, force sign out on UI
+      setUser(null);
+      setLoading(false);
+      
+      if (Platform.OS === 'android') {
+        // Force a complete re-render on Android even if there was an error
+        setTimeout(() => {
+          setForceRender(prev => prev + 1);
+        }, 100);
+      }
     }
   }
 
@@ -180,7 +301,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signOut: handleSignOut, 
         resetPassword: handleResetPassword, 
         confirmResetPassword: handleConfirmResetPassword,
-        continueAsGuest: handleContinueAsGuest
+        continueAsGuest: handleContinueAsGuest,
+        setPhotoPickerActive
       }}
     >
       {!loading && children}

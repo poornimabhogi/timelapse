@@ -10,10 +10,12 @@ import {
   ToastAndroid,
   Image,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { styles } from './styles';
 import { HomeScreenProps, GoalData, ProductData } from '../../types/interfaces';
 import BottomTabBar from '../../components/common/BottomTabBar';
+import { useAuth } from '../../contexts/AuthContext';
 
 const HomeScreen: React.FC<HomeScreenProps> = ({
   onChangeScreen,
@@ -21,6 +23,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
 }) => {
   const [isAndroid15, setIsAndroid15] = useState(false);
   const screenWidth = Dimensions.get('window').width;
+  const { signOut } = useAuth();
   
   useEffect(() => {
     console.log('HomeScreen mounted');
@@ -35,6 +38,31 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
       console.log('HomeScreen unmounted');
     };
   }, []);
+
+  const handleLogout = async () => {
+    try {
+      Alert.alert(
+        "Logout",
+        "Are you sure you want to logout?",
+        [
+          {
+            text: "Cancel",
+            style: "cancel"
+          },
+          { 
+            text: "Logout", 
+            onPress: async () => {
+              await signOut();
+              // The AuthProvider will handle redirecting to the login screen
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Logout error:', error);
+      Alert.alert('Error', 'Failed to logout. Please try again.');
+    }
+  };
 
   const goals: GoalData[] = [
     {
@@ -157,7 +185,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
                 fontSize: 14,
               }}>Lucky Draw</Text>
             </TouchableOpacity>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={handleLogout}>
               <Text style={styles.logoutText}>Logout</Text>
             </TouchableOpacity>
           </View>
