@@ -1,5 +1,6 @@
 import React, { useEffect, useCallback } from 'react';
 import { useAppContext } from '../context/AppContext';
+import { useAuth } from '../contexts/AuthContext';
 import HomeScreen from '../screens/HomeScreen/index';
 import ShopScreen from '../screens/ShopScreen/index';
 import HealthScreen from '../screens/HealthScreen/index';
@@ -9,6 +10,7 @@ import SocialScreen from '../screens/SocialScreen/index';
 import ProfileScreen from '../screens/ProfileScreen/index';
 import LocalShop from '../screens/LocalShop/index';
 import AddProduct from '../screens/AddProduct/index';
+import AuthNavigator from './AuthNavigator';
 
 const Navigation: React.FC = () => {
   const {
@@ -23,6 +25,8 @@ const Navigation: React.FC = () => {
     updateQuantity,
     clearCart
   } = useAppContext();
+  
+  const { user, loading } = useAuth();
 
   // Memoized screen change handler to prevent unnecessary re-renders
   const handleChangeScreen = useCallback((screen: string) => {
@@ -38,6 +42,16 @@ const Navigation: React.FC = () => {
   useEffect(() => {
     console.log(`Current screen changed to: ${currentScreen}`);
   }, [currentScreen]);
+
+  // If auth is loading, don't render anything yet
+  if (loading) {
+    return null;
+  }
+
+  // If user is not authenticated, show the auth screens
+  if (!user) {
+    return <AuthNavigator onChangeScreen={handleChangeScreen} />;
+  }
 
   try {
     // Render the appropriate screen based on current selection

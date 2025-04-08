@@ -7,13 +7,16 @@
 
 import React from 'react';
 import { AppProvider } from './src/context/AppContext';
+import { AuthProvider } from './src/contexts/AuthContext';
 import Navigation from './src/navigation';
 
 const App = () => {
   return (
-    <AppProvider>
-      <Navigation />
-    </AppProvider>
+    <AuthProvider>
+      <AppProvider>
+        <Navigation />
+      </AppProvider>
+    </AuthProvider>
   );
 };
 

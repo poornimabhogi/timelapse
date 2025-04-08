@@ -246,6 +246,66 @@ resource "aws_iam_policy" "authenticated_policy" {
           }
         }
       },
+      # DynamoDB permissions for user-specific data
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:Query",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:BatchGetItem"
+        ]
+        Resource = [
+          aws_dynamodb_table.users_table.arn,
+          aws_dynamodb_table.timelapses.arn,
+          aws_dynamodb_table.posts_table.arn,
+          aws_dynamodb_table.interactions_table.arn
+        ]
+        Condition = {
+          ForAllValues:StringEquals = {
+            "dynamodb:LeadingKeys": ["$${cognito-identity.amazonaws.com:sub}"]
+          }
+        }
+      },
+      # Read-only access to other users' public data
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:Query",
+          "dynamodb:BatchGetItem"
+        ]
+        Resource = [
+          aws_dynamodb_table.users_table.arn,
+          aws_dynamodb_table.timelapses.arn,
+          aws_dynamodb_table.posts_table.arn,
+          "${aws_dynamodb_table.users_table.arn}/index/*",
+          "${aws_dynamodb_table.timelapses.arn}/index/*",
+          "${aws_dynamodb_table.posts_table.arn}/index/*"
+        ]
+      },
+      # Permissions for social features (follows and interactions)
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:Query",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem"
+        ]
+        Resource = [
+          aws_dynamodb_table.follows_table.arn,
+          "${aws_dynamodb_table.follows_table.arn}/index/*"
+        ]
+        Condition = {
+          ForAllValues:StringEquals = {
+            "dynamodb:LeadingKeys": ["$${cognito-identity.amazonaws.com:sub}"]
+          }
+        }
+      },
       # AppSync access for GraphQL API
       {
         Effect = "Allow"

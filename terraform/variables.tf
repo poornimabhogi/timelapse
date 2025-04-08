@@ -4,6 +4,25 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+variable "aws_access_key" {
+  description = "AWS access key"
+  type        = string
+  sensitive   = true
+}
+
+variable "aws_secret_key" {
+  description = "AWS secret key"
+  type        = string
+  sensitive   = true
+}
+
+variable "aws_session_token" {
+  description = "AWS session token (optional, only needed for temporary credentials)"
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
 variable "app_name" {
   description = "Application name used for resource naming"
   type        = string
