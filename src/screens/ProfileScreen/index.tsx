@@ -1428,6 +1428,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
             timestamp: selectedTimelapse.timestamp?.toString(),
             userId: user?.uid || 'unknown',
             likedBy: selectedTimelapse.likedBy,
+            type: selectedTimelapse.type,
           }}
           onClose={() => setTimelapseViewerVisible(false)}
           onDelete={handleTimelapseDelete}

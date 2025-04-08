@@ -122,7 +122,7 @@ const TimelapseViewer: React.FC<TimelapseViewerProps> = ({
         </View>
         
         {/* Main content - the timelapse image/video */}
-        <View style={styles.imageContainer}>
+        <View style={styles.contentContainer}>
           {/* Conditionally render Image or Video based on type */}
           {!timelapse.type || timelapse.type === 'photo' ? (
             <Image
@@ -131,7 +131,7 @@ const TimelapseViewer: React.FC<TimelapseViewerProps> = ({
               resizeMode="contain"
             />
           ) : (
-            <View style={styles.videoContainer}>
+            <View style={styles.videoWrapper}>
               {!isVideoReady && (
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="large" color="#FFFFFF" />
@@ -147,6 +147,9 @@ const TimelapseViewer: React.FC<TimelapseViewerProps> = ({
                 paused={false}
                 onLoad={() => setIsVideoReady(true)}
                 onError={(e) => console.error('Video error:', e.error)}
+                ignoreSilentSwitch="ignore"
+                playInBackground={false}
+                playWhenInactive={false}
               />
             </View>
           )}
@@ -220,33 +223,39 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFF',
   },
-  imageContainer: {
+  contentContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    width: width,
-    height: height,
+    backgroundColor: '#000',
   },
-  image: {
-    width: width,
-    height: height,
-    resizeMode: 'contain',
-  },
-  videoContainer: {
-    width: width,
-    height: height,
+  videoWrapper: {
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },
   video: {
-    width: width,
-    height: height,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    right: 0,
+    width: '100%',
+    height: '100%',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'contain',
   },
   loadingContainer: {
     position: 'absolute',
-    justifyContent: 'center',
-    alignItems: 'center',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -50 }, { translateY: -50 }],
     zIndex: 1,
+    alignItems: 'center',
   },
   loadingText: {
     color: '#FFFFFF',
