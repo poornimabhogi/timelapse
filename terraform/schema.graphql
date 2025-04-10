@@ -1,0 +1,94 @@
+type User {
+  id: ID!
+  username: String!
+  name: String
+  bio: String
+  avatar: String
+  followers: [Follow]
+  following: [Follow]
+  posts: [Post]
+  timelapses: [Timelapse]
+  createdAt: String
+}
+
+type Follow {
+  id: ID!
+  follower: User!
+  following: User!
+  createdAt: String
+}
+
+type Post {
+  id: ID!
+  content: String
+  media: String
+  author: User!
+  likes: Int
+  comments: [Comment]
+  createdAt: String
+}
+
+type Comment {
+  id: ID!
+  content: String!
+  author: User!
+  post: Post!
+  createdAt: String
+}
+
+type Timelapse {
+  id: ID!
+  title: String
+  description: String
+  creator: User!
+  videoUrl: String
+  thumbnailUrl: String
+  tags: [String]
+  likes: Int
+  views: Int
+  createdAt: String
+}
+
+type Query {
+  getUser(id: ID!): User
+  getUserByUsername(username: String!): User
+  listUsers: [User]
+  getPost(id: ID!): Post
+  listPosts: [Post]
+  listPostsByUser(userId: ID!): [Post]
+  getTimelapse(id: ID!): Timelapse
+  listTimelapses: [Timelapse]
+  listTimelapsesByUser(userId: ID!): [Timelapse]
+  getFollowers(userId: ID!): [User]
+  getFollowing(userId: ID!): [User]
+  listFollowedPosts(userId: ID!, limit: Int, nextToken: String): [Post]
+}
+
+type Mutation {
+  createUser(username: String!, name: String, bio: String, avatar: String): User
+  updateUser(id: ID!, username: String, name: String, bio: String, avatar: String): User
+  deleteUser(id: ID!): Boolean
+  
+  followUser(followerId: ID!, followingId: ID!): Follow
+  unfollowUser(followerId: ID!, followingId: ID!): Boolean
+  
+  createPost(authorId: ID!, content: String, media: String): Post
+  updatePost(id: ID!, content: String, media: String): Post
+  deletePost(id: ID!): Boolean
+  likePost(id: ID!): Post
+  
+  createComment(postId: ID!, authorId: ID!, content: String!): Comment
+  updateComment(id: ID!, content: String!): Comment
+  deleteComment(id: ID!): Boolean
+  
+  createTimelapse(creatorId: ID!, title: String, description: String, videoUrl: String, thumbnailUrl: String, tags: [String]): Timelapse
+  updateTimelapse(id: ID!, title: String, description: String, videoUrl: String, thumbnailUrl: String, tags: [String]): Timelapse
+  deleteTimelapse(id: ID!): Boolean
+  likeTimelapse(id: ID!): Timelapse
+  viewTimelapse(id: ID!): Timelapse
+}
+
+schema {
+  query: Query
+  mutation: Mutation
+} 

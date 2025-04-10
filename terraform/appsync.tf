@@ -12,6 +12,8 @@ resource "aws_appsync_graphql_api" "timelapse_api" {
     default_action = "ALLOW"
   }
 
+  schema = file("${path.module}/schema.graphql")
+
   # Enable logging in production
   log_config {
     cloudwatch_logs_role_arn = aws_iam_role.appsync_logs_role.arn
@@ -197,90 +199,51 @@ resource "aws_iam_role_policy" "appsync_dynamodb_policy" {
   })
 }
 
-# Add resolver for getUser
-resource "aws_appsync_resolver" "get_user" {
+# Add NONE data source for pipeline resolvers
+resource "aws_appsync_datasource" "none" {
+  api_id = aws_appsync_graphql_api.timelapse_api.id
+  name   = "NONE"
+  type   = "NONE"
+}
+
+# Add AppSync function for getting follows
+resource "aws_appsync_function" "get_follows" {
   api_id      = aws_appsync_graphql_api.timelapse_api.id
-  type        = "Query"
-  field       = "getUser"
-  data_source = aws_appsync_datasource.users_datasource.name
-
-  request_template = <<EOF
-{
-  "version": "2018-05-29",
-  "operation": "GetItem",
-  "key": {
-    "userId": $util.dynamodb.toDynamoDBJson($ctx.args.id)
-  }
-}
-EOF
-
-  response_template = <<EOF
-$util.toJson($ctx.result)
-EOF
-}
-
-# Add resolver for listFollowedPosts
-resource "aws_appsync_resolver" "list_followed_posts" {
-  api_id      = aws_appsync_graphql_api.timelapse_api.id
-  type        = "Query"
-  field       = "listFollowedPosts"
-
-  request_template = <<EOF
-{
-  "version": "2018-05-29",
-  "operation": "Query",
-  "index": "FollowersIndex",
-  "query": {
-    "expression": "followerId = :followerId",
-    "expressionValues": {
-      ":followerId": $util.dynamodb.toDynamoDBJson($ctx.identity.sub)
-    }
-  },
-  "limit": $util.defaultIfNull($ctx.args.limit, 20),
-  "nextToken": $util.toJson($util.defaultIfNull($ctx.args.nextToken, null)),
-  "scanIndexForward": false
-}
-EOF
-
-  response_template = <<EOF
-#set($followedUsers = [])
-#foreach($follow in $ctx.result.items)
-  #set($success = $followedUsers.add($follow.followedId))
-#end
-
-#if($followedUsers.size() > 0)
-  #set($limit = $util.defaultIfNull($ctx.args.limit, 20))
-  #set($postsRequest = {
+  data_source = aws_appsync_datasource.follows_datasource.name
+  name        = "GetFollowsFunction"
+  
+  code = <<EOF
+export function request(ctx) {
+  return {
     "version": "2018-05-29",
     "operation": "Query",
-    "index": "UserPostsIndex",
+    "index": "byFollowerId",
     "query": {
-      "expression": "userId IN $util.toJson($followedUsers)",
+      "expression": "followerId = :followerId",
+      "expressionValues": {
+        ":followerId": { "S": ctx.identity.sub || ctx.args.userId }
+      }
     },
-    "limit": $limit,
+    "limit": ctx.args.limit || 20,
+    "nextToken": ctx.args.nextToken || null,
     "scanIndexForward": false
-  })
-  
-  #if($ctx.args.nextToken)
-    #set($postsRequest.nextToken = $ctx.args.nextToken)
-  #end
-  
-  $util.qr($ctx.stash.put("postsRequest", $postsRequest))
-  
-  #return($postsRequest)
-#else
-  #return({ "items": [], "nextToken": null })
-#end
+  };
+}
+
+export function response(ctx) {
+  const followedUsers = ctx.result.items.map(follow => follow.followingId);
+  ctx.stash.followedUsers = followedUsers;
+  return ctx.result;
+}
 EOF
 
-  pipeline_config {
-    functions = [
-      aws_appsync_function.get_followed_posts.function_id
-    ]
+  runtime {
+    name            = "APPSYNC_JS"
+    runtime_version = "1.0.0"
   }
 }
 
-# AppSync Function for getting followed posts
+# Add AppSync function for getting followed posts
 resource "aws_appsync_function" "get_followed_posts" {
   api_id      = aws_appsync_graphql_api.timelapse_api.id
   data_source = aws_appsync_datasource.posts_datasource.name
@@ -288,17 +251,117 @@ resource "aws_appsync_function" "get_followed_posts" {
   
   code = <<EOF
 export function request(ctx) {
-  return ctx.stash.postsRequest;
+  const followedUsers = ctx.stash.followedUsers || [];
+  
+  if (followedUsers.length === 0) {
+    return {
+      "version": "2018-05-29",
+      "operation": "Scan",
+      "limit": 0  // Return empty list if no followed users
+    };
+  }
+  
+  // Create filter expression for userId IN (followedUser1, followedUser2, ...)
+  const expressionValues = {};
+  const filterExpressions = followedUsers.map((userId, index) => {
+    const placeholder = `:user$${index}`;
+    expressionValues[placeholder] = { "S": userId };
+    return `userId = $${placeholder}`;
+  });
+  
+  return {
+    "version": "2018-05-29",
+    "operation": "Scan",
+    "filter": {
+      "expression": filterExpressions.join(" OR "),
+      "expressionValues": expressionValues
+    },
+    "limit": ctx.args.limit || 20,
+    "nextToken": ctx.args.nextToken || null
+  };
 }
 
 export function response(ctx) {
-  return ctx.result.items;
+  return ctx.result;
 }
 EOF
 
   runtime {
     name            = "APPSYNC_JS"
     runtime_version = "1.0.0"
+  }
+}
+
+# Pipeline functions for listFollowedPosts
+resource "aws_appsync_function" "get_followed_users" {
+  api_id                   = aws_appsync_graphql_api.timelapse_api.id
+  data_source             = aws_appsync_datasource.follows_datasource.name
+  name                    = "getFollowedUsers"
+  request_mapping_template = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Query",
+  "query": {
+    "expression": "followerId = :followerId",
+    "expressionValues": {
+      ":followerId": $util.dynamodb.toDynamoDBJson($ctx.identity.sub)
+    }
+  }
+}
+EOF
+  response_mapping_template = <<EOF
+#set($followedUsers = [])
+#foreach($follow in $ctx.result.items)
+  $util.qr($followedUsers.add($follow.followedId))
+#end
+$util.toJson($followedUsers)
+EOF
+}
+
+resource "aws_appsync_function" "get_posts_by_users" {
+  api_id                   = aws_appsync_graphql_api.timelapse_api.id
+  data_source             = aws_appsync_datasource.posts_datasource.name
+  name                    = "getPostsByUsers"
+  request_mapping_template = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Query",
+  "query": {
+    "expression": "userId IN :userIds",
+    "expressionValues": {
+      ":userIds": $util.dynamodb.toDynamoDBJson($ctx.prev.result)
+    }
+  }
+}
+EOF
+  response_mapping_template = <<EOF
+$util.toJson($ctx.result.items)
+EOF
+}
+
+# Pipeline resolver for listFollowedPosts
+resource "aws_appsync_resolver" "list_followed_posts" {
+  api_id      = aws_appsync_graphql_api.timelapse_api.id
+  type        = "Query"
+  field       = "listFollowedPosts"
+  kind        = "PIPELINE"
+  
+  request_template = <<EOF
+{
+  "version": "2018-05-29",
+  "payload": {}
+}
+EOF
+
+  response_template = <<EOF
+$util.toJson($ctx.result)
+EOF
+
+  pipeline_config {
+    functions = [
+      aws_appsync_function.get_followed_users.function_id,
+      aws_appsync_function.get_posts_by_users.function_id
+    ]
   }
 }
 

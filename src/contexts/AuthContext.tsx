@@ -5,7 +5,7 @@ import { configureAmplify } from '../services/aws-config';
 import { Platform, AppState, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Configure Amplify when the context is used
+// Force reconfigure Amplify when context is used
 configureAmplify();
 
 interface User {
@@ -139,6 +139,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Sign up new user
   async function handleSignUp(username: string, password: string, email: string) {
     try {
+      console.log('Starting sign up process for:', username);
+      
       const result = await signUp({
         username,
         password,
@@ -148,9 +150,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           },
         },
       });
+      
+      console.log('Sign up successful:', result);
       return result;
     } catch (error) {
-      console.log('Error signing up', error);
+      console.error('Error signing up:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      
+      // Check for specific error types
+      if (error instanceof Error) {
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+      }
+      
       throw error;
     }
   }

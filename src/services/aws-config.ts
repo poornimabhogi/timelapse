@@ -1,31 +1,30 @@
 import { Amplify } from 'aws-amplify';
-import { fetchAuthSession } from '@aws-amplify/auth';
-import { post, get } from '@aws-amplify/api';
-import { uploadData, getUrl } from '@aws-amplify/storage';
+import { fetchAuthSession } from 'aws-amplify/auth';
+import { post, get } from 'aws-amplify/api';
+import { uploadData, getUrl } from 'aws-amplify/storage';
 
 // Configure AWS Amplify
-const configureAmplify = () => {
-  Amplify.configure({
-    Auth: {
-      Cognito: {
-        userPoolId: process.env.REACT_APP_COGNITO_USER_POOL_ID || 'us-east-1_xxxxxxxx',
-        userPoolClientId: process.env.REACT_APP_COGNITO_APP_CLIENT_ID || 'xxxxxxxxxxxxxxxxxxxxxxxxxx',
-        identityPoolId: process.env.REACT_APP_COGNITO_IDENTITY_POOL_ID || 'us-east-1:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
-      },
-    },
-    Storage: {
-      S3: {
-        bucket: process.env.REACT_APP_S3_BUCKET_NAME || 'timelapse-media-storage',
-      },
-    },
-    API: {
-      REST: {
-        TimelapseAPI: {
-          endpoint: process.env.REACT_APP_API_ENDPOINT || 'https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com',
-        },
-      },
-    },
-  });
+export const configureAmplify = () => {
+  console.log('Configuring AWS Amplify with production configuration...');
+  
+  try {
+    // Use production configuration
+    const prodConfig = {
+      Auth: {
+        Cognito: {
+          // TODO: Replace with your actual Cognito values
+          userPoolId: 'us-east-1_UTGvLbD6F',
+          userPoolClientId: '1pi8oilc6h5plj0a6a1tr8m8u6',
+          region: 'us-east-1',
+        }
+      }
+    };
+    
+    Amplify.configure(prodConfig);
+    console.log('AWS Amplify configured successfully with production credentials');
+  } catch (error) {
+    console.error('Error configuring AWS Amplify:', error);
+  }
 };
 
 // Helper functions for API calls
@@ -381,7 +380,6 @@ export const deleteTimelapseItem = async (timelapseId: string) => {
   }
 };
 
-export { configureAmplify };
 export default {
   configureAmplify,
   getUserProfile,
