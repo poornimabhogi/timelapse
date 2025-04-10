@@ -35,13 +35,20 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({
   const { signUp, confirmSignUp } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
 
+  const validateUsername = (username: string) => {
+    const usernameRegex = /^[a-zA-Z0-9]+$/;
+    return usernameRegex.test(username);
+  };
+
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   };
 
   const validatePassword = (password: string) => {
-    return password.length >= 8;
+    // Require minimum 8 characters with at least 1 letter and 1 number
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+    return passwordRegex.test(password);
   };
 
   const handleSignUp = async () => {
@@ -51,13 +58,18 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({
       return;
     }
 
+    if (!validateUsername(username)) {
+      Alert.alert('Error', 'Username can only contain letters and numbers');
+      return;
+    }
+
     if (!validateEmail(email)) {
       Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
     if (!validatePassword(password)) {
-      Alert.alert('Error', 'Password must be at least 8 characters long');
+      Alert.alert('Error', 'Password must be at least 8 characters long and contain at least 1 letter and 1 number');
       return;
     }
 
@@ -121,6 +133,16 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({
           errorMessage = 'Native module error. Please restart the app and try again.';
         } else if (error.message.includes('already exists')) {
           errorMessage = 'This username or email is already registered.';
+        } else if (error.message.includes('User pool client') && error.message.includes('does not exist')) {
+          errorMessage = 'Authentication configuration error. Please contact support.';
+        } else if (error.message.includes('ResourceNotFoundException')) {
+          errorMessage = 'AWS resource error. Please verify your AWS configuration.';
+        } else if (error.message.includes('NotAuthorizedException')) {
+          errorMessage = 'Authentication failed. Please check your credentials.';
+        } else if (error.message.includes('InvalidParameterException')) {
+          errorMessage = 'Invalid parameters provided. Please check your input and try again.';
+        } else if (error.message.includes('UserLambdaValidationException')) {
+          errorMessage = 'Your account could not be validated. Please try with different information.';
         }
       }
       
@@ -138,10 +160,11 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({
 
     setLoading(true);
     try {
-      await confirmSignUp(username, verificationCode);
+      // Use email for confirmation since Cognito uses email as the username
+      await confirmSignUp(email, verificationCode);
       Alert.alert(
         'Success',
-        'Your account has been verified successfully. You can now login.',
+        'Your account has been verified successfully. You can now login with your email address and password.',
         [
           {
             text: 'OK',
@@ -189,7 +212,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({
           </Text>
           <Text style={styles.subHeaderText}>
             {signupComplete 
-              ? 'Enter the verification code sent to your email'
+              ? 'Enter the verification code sent to your email. You will use your email address to log in.'
               : 'Sign up to start creating and sharing timelapses'
             }
           </Text>
@@ -252,11 +275,14 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({
                 <Text style={styles.inputLabel}>Password</Text>
                 <TextInput
                   style={styles.textInput}
-                  placeholder="Create a password (min. 8 characters)"
+                  placeholder="Create a password (min. 8 characters, 1 letter, 1 number)"
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry
                   onFocus={() => scrollToInput(200)}
+                  autoComplete="off"
+                  textContentType="none"
+                  autoCapitalize="none"
                 />
               </View>
 
@@ -269,6 +295,9 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({
                   onChangeText={setConfirmPassword}
                   secureTextEntry
                   onFocus={() => scrollToInput(300)}
+                  autoComplete="off"
+                  textContentType="none"
+                  autoCapitalize="none"
                 />
               </View>
 

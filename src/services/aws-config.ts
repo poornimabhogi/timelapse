@@ -5,23 +5,38 @@ import { uploadData, getUrl } from 'aws-amplify/storage';
 
 // Configure AWS Amplify
 export const configureAmplify = () => {
-  console.log('Configuring AWS Amplify with production configuration...');
+  console.log('Configuring AWS Amplify with Terraform outputs...');
   
   try {
-    // Use production configuration
-    const prodConfig = {
+    // Use values from Terraform outputs
+    const awsConfig = {
       Auth: {
         Cognito: {
-          // TODO: Replace with your actual Cognito values
-          userPoolId: 'us-east-1_UTGvLbD6F',
-          userPoolClientId: '1pi8oilc6h5plj0a6a1tr8m8u6',
+          // Terraform output values
+          userPoolId: 'us-east-1_kVRAOb20r',
+          userPoolClientId: '75bn4elftajcfiuprogqa6v0si',
+          identityPoolId: 'us-east-1:d0d1573e-be3d-4f1a-be66-819b9d10188d',
           region: 'us-east-1',
-        }
-      }
+        },
+      },
+      Storage: {
+        S3: {
+          bucket: 'timelapse-media-dev-1d514ebc',
+          region: 'us-east-1',
+        },
+      },
+      API: {
+        REST: {
+          TimelapseAPI: {
+            endpoint: 'https://7k3axihdn5c45bjtiezvuwlsnu.appsync-api.us-east-1.amazonaws.com/graphql',
+            region: 'us-east-1',
+          },
+        },
+      },
     };
     
-    Amplify.configure(prodConfig);
-    console.log('AWS Amplify configured successfully with production credentials');
+    Amplify.configure(awsConfig);
+    console.log('AWS Amplify configured successfully with Terraform outputs');
   } catch (error) {
     console.error('Error configuring AWS Amplify:', error);
   }

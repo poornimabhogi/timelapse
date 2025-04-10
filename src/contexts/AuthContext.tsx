@@ -141,12 +141,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       console.log('Starting sign up process for:', username);
       
+      // Use email as username for Cognito since it's configured to expect email addresses
       const result = await signUp({
-        username,
-        password,
+        username: email,
+        password: password,
         options: {
           userAttributes: {
-            email,
+            email: email,
+            name: username,
           },
         },
       });
@@ -171,6 +173,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Confirm sign up with code
   async function handleConfirmSignUp(username: string, code: string) {
     try {
+      // In our Cognito setup, the actual username is the email
       return await confirmSignUp({ username, confirmationCode: code });
     } catch (error) {
       console.log('Error confirming sign up', error);
