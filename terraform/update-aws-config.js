@@ -40,7 +40,7 @@ const availableOutputs = execSync('terraform output', {
 console.log('Available outputs:', availableOutputs);
 
 // Try different possible output names based on common naming conventions
-let userPoolId, appClientId, identityPoolId, awsRegion;
+let userPoolId, appClientId, identityPoolId, awsRegion, mediaApiUrl;
 
 // Try for user pool ID
 try {
@@ -66,6 +66,14 @@ try {
                    getTerraformOutput('identity_pool_id');
 } catch (error) {
   console.log('Could not find identity pool ID output');
+}
+
+// Try for media API URL
+try {
+  // Use GraphQL endpoint for media operations instead of API Gateway
+  mediaApiUrl = getTerraformOutput('appsync_graphql_api_url');
+} catch (error) {
+  console.log('Could not find GraphQL API URL output');
 }
 
 // Region
@@ -159,7 +167,7 @@ output "cognito_identity_pool_id" {
           awsRegion = input || awsRegion;
           readline.close();
           
-          updateConfigFile(userPoolId, appClientId, identityPoolId, awsRegion);
+          updateConfigFile(userPoolId, appClientId, identityPoolId, awsRegion, mediaApiUrl);
         });
       });
     });
@@ -171,12 +179,13 @@ output "cognito_identity_pool_id" {
   console.log(`- App Client ID: ${appClientId}`);
   console.log(`- Identity Pool ID: ${identityPoolId}`);
   console.log(`- AWS Region: ${awsRegion}`);
+  console.log(`- Media API URL: ${mediaApiUrl}`);
   
-  updateConfigFile(userPoolId, appClientId, identityPoolId, awsRegion);
+  updateConfigFile(userPoolId, appClientId, identityPoolId, awsRegion, mediaApiUrl);
 }
 
 // Function to update the config file
-function updateConfigFile(userPoolId, appClientId, identityPoolId, awsRegion) {
+function updateConfigFile(userPoolId, appClientId, identityPoolId, awsRegion, mediaApiUrl) {
   // Check if all values are available
   if (!userPoolId || !appClientId || !identityPoolId) {
     console.error('Missing required Cognito IDs. Update aborted.');
@@ -198,27 +207,46 @@ function updateConfigFile(userPoolId, appClientId, identityPoolId, awsRegion) {
 
 // Configure AWS Amplify
 const configureAmplify = () => {
-  Amplify.configure({
-    Auth: {
-      Cognito: {
-        userPoolId: process.env.REACT_APP_COGNITO_USER_POOL_ID || 'us-east-1_xxxxxxxx',
-        userPoolClientId: process.env.REACT_APP_COGNITO_APP_CLIENT_ID || 'xxxxxxxxxxxxxxxxxxxxxxxxxx',
-        identityPoolId: process.env.REACT_APP_COGNITO_IDENTITY_POOL_ID || 'us-east-1:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
-      },
-    },
-    Storage: {
-      S3: {
-        bucket: process.env.REACT_APP_S3_BUCKET_NAME || 'timelapse-media-storage',
-      },
-    },
-    API: {
-      REST: {
-        TimelapseAPI: {
-          endpoint: process.env.REACT_APP_API_ENDPOINT || 'https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com',
+  console.log('Configuring AWS Amplify with Terraform outputs...');
+  
+  try {
+    // Use values from Terraform outputs
+    const awsConfig = {
+      Auth: {
+        Cognito: {
+          // Terraform output values
+          userPoolId: '${userPoolId}',
+          userPoolClientId: '${appClientId}',
+          identityPoolId: '${identityPoolId}',
+          region: '${awsRegion}',
         },
       },
-    },
-  });
+      Storage: {
+        S3: {
+          bucket: '${s3BucketName || 'your-s3-bucket-name'}',
+          region: '${awsRegion}',
+        },
+      },
+      API: {
+        REST: {
+          TimelapseAPI: {
+            endpoint: '${apiEndpoint || 'your-api-endpoint'}',
+            region: '${awsRegion}',
+          }
+        },
+        GraphQL: {
+          endpoint: '${mediaApiUrl || 'your-graphql-endpoint'}',
+          region: '${awsRegion}',
+          apiKey: 'da2-fakeApiId123456',
+        },
+      },
+    };
+    
+    Amplify.configure(awsConfig);
+    console.log('AWS Amplify configured successfully with Terraform outputs');
+  } catch (error) {
+    console.error('Error configuring AWS Amplify:', error);
+  }
 };
 
 export { configureAmplify };

@@ -87,11 +87,24 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   
   // Example user details
   const [userDetails, setUserDetails] = useState<UserDetails>({
-    name: 'User Name',
-    email: 'user@example.com',
+    name: user?.username || 'User Name',
+    email: user?.email || 'user@example.com',
     phone: '+1 123 456 7890',
     bio: 'This is a short bio that describes the user in a few words.'
   });
+  
+  // Update user details when user changes
+  useEffect(() => {
+    if (user) {
+      setUserDetails(prevDetails => ({
+        ...prevDetails,
+        name: user.username || 'User Name',
+        email: user.email || 'user@example.com',
+        phone: user.attributes?.phone || '+1 123 456 7890',
+        bio: user.attributes?.bio || 'This is a short bio that describes the user in a few words.'
+      }));
+    }
+  }, [user]);
   
   // Temporary state for editing
   const [editableUserDetails, setEditableUserDetails] = useState<UserDetails>(userDetails);

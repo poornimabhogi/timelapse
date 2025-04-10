@@ -96,7 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const userInfo: User = {
         uid: attributes.sub || currentUser.userId,
-        username: currentUser.username,
+        username: attributes.name || currentUser.username,
         email: attributes.email || '',
         attributes: attributes
       };
@@ -122,7 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         const userInfo: User = {
           uid: attributes.sub || currentUser.userId,
-          username: currentUser.username,
+          username: attributes.name || currentUser.username,
           email: attributes.email || '',
           attributes: attributes
         };

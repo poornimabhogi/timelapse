@@ -365,4 +365,83 @@ EOF
   }
 }
 
+# Lambda function data source for generating presigned URLs
+resource "aws_appsync_datasource" "generate_presigned_url_datasource" {
+  api_id           = aws_appsync_graphql_api.timelapse_api.id
+  name             = "GeneratePresignedUrlFunction"
+  service_role_arn = aws_iam_role.appsync_lambda_role.arn
+  type             = "AWS_LAMBDA"
+
+  lambda_config {
+    function_arn = aws_lambda_function.presigned_url_lambda.arn
+  }
+}
+
+# IAM role for AppSync to invoke Lambda
+resource "aws_iam_role" "appsync_lambda_role" {
+  name = "${var.app_name}-appsync-lambda-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "appsync.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Environment = var.environment
+    Application = var.app_name
+  }
+}
+
+# IAM policy for AppSync to invoke Lambda
+resource "aws_iam_role_policy" "appsync_lambda_policy" {
+  name = "${var.app_name}-appsync-lambda-policy-${var.environment}"
+  role = aws_iam_role.appsync_lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "lambda:InvokeFunction"
+        ]
+        Effect   = "Allow"
+        Resource = [aws_lambda_function.presigned_url_lambda.arn]
+      }
+    ]
+  })
+}
+
+# Resolver for generatePresignedUrl mutation
+resource "aws_appsync_resolver" "generate_presigned_url_resolver" {
+  api_id      = aws_appsync_graphql_api.timelapse_api.id
+  type        = "Mutation"
+  field       = "generatePresignedUrl"
+  data_source = aws_appsync_datasource.generate_presigned_url_datasource.name
+
+  # Direct Lambda resolver
+  request_template = <<EOF
+{
+  "version": "2018-05-29",
+  "operation": "Invoke",
+  "payload": {
+    "arguments": $util.toJson($context.arguments),
+    "identity": {
+      "sub": "$context.identity.sub",
+      "username": "$context.identity.username"
+    }
+  }
+}
+EOF
+
+  response_template = "$util.toJson($context.result)"
+}
+
   

@@ -5,11 +5,15 @@ const s3Client = new S3Client({ region: process.env.AWS_REGION });
 
 exports.handler = async (event) => {
   try {
-    const { fileName, fileType } = JSON.parse(event.body);
+    console.log('Event received:', JSON.stringify(event, null, 2));
     
-    // Generate a unique key for the file
+    // Extract parameters from the GraphQL event
+    const { fileName, fileType } = event.arguments;
+    const userId = event.identity.sub;
+    
+    // Generate a unique key for the file with user ID
     const timestamp = new Date().getTime();
-    const key = `uploads/${timestamp}-${fileName}`;
+    const key = `uploads/${userId}/${timestamp}-${fileName}`;
     
     // Create the command for S3 upload
     const command = new PutObjectCommand({
@@ -21,27 +25,14 @@ exports.handler = async (event) => {
     // Generate presigned URL
     const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
     
+    // Return the result in the format expected by the GraphQL type
     return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Credentials': true,
-      },
-      body: JSON.stringify({
-        uploadUrl: presignedUrl,
-        fileUrl: `https://${process.env.BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
-        key: key
-      }),
+      uploadUrl: presignedUrl,
+      fileUrl: `https://${process.env.BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+      key: key
     };
   } catch (error) {
     console.error('Error generating presigned URL:', error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Credentials': true,
-      },
-      body: JSON.stringify({ error: 'Failed to generate upload URL' }),
-    };
+    throw new Error(`Failed to generate upload URL: ${error.message}`);
   }
 }; 

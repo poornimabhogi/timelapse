@@ -86,6 +86,16 @@ type Mutation {
   deleteTimelapse(id: ID!): Boolean
   likeTimelapse(id: ID!): Timelapse
   viewTimelapse(id: ID!): Timelapse
+  
+  # Generate a presigned URL for S3 uploads
+  generatePresignedUrl(fileName: String!, fileType: String!): PresignedUrlResponse
+}
+
+# Response type for presigned URL generation
+type PresignedUrlResponse {
+  uploadUrl: String!
+  fileUrl: String!
+  key: String!
 }
 
 schema {
