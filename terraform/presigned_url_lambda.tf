@@ -13,8 +13,7 @@ resource "aws_lambda_function" "presigned_url_lambda" {
   # Configure environment variables
   environment {
     variables = {
-      BUCKET_NAME = aws_s3_bucket.media_bucket.bucket
-      AWS_REGION  = var.aws_region
+      BUCKET_NAME = aws_s3_bucket.media_bucket.id
     }
   }
   

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   Keyboard,
+  Dimensions,
 } from 'react-native';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -32,8 +33,36 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({
   const [loading, setLoading] = useState(false);
   const [signupComplete, setSignupComplete] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const { signUp, confirmSignUp } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
+  const usernameInputRef = useRef<TextInput>(null);
+
+  // Add keyboard listeners to handle keyboard appearance issues
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    // Focus username input on component mount (helps with simulator keyboard)
+    setTimeout(() => {
+      usernameInputRef.current?.focus();
+    }, 500);
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
 
   const validateUsername = (username: string) => {
     const usernameRegex = /^[a-zA-Z0-9]+$/;
@@ -191,11 +220,12 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoidingView}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        enabled
       >
         <ScrollView 
           ref={scrollViewRef}
           contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
+          keyboardShouldPersistTaps="always"
           showsVerticalScrollIndicator={true}
           scrollEnabled={true}
           bounces={true}
@@ -249,6 +279,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Username</Text>
                 <TextInput
+                  ref={usernameInputRef}
                   style={styles.textInput}
                   placeholder="Choose a username"
                   value={username}
@@ -281,8 +312,9 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({
                   secureTextEntry
                   onFocus={() => scrollToInput(200)}
                   autoComplete="off"
-                  textContentType="none"
+                  textContentType="oneTimeCode"
                   autoCapitalize="none"
+                  passwordRules="minlength: 8; required: lower; required: upper; required: digit;"
                 />
               </View>
 
@@ -296,7 +328,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({
                   secureTextEntry
                   onFocus={() => scrollToInput(300)}
                   autoComplete="off"
-                  textContentType="none"
+                  textContentType="oneTimeCode"
                   autoCapitalize="none"
                 />
               </View>
@@ -307,7 +339,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({
                   (!username || !email || !password || !confirmPassword) && styles.buttonDisabled
                 ]}
                 onPress={() => {
-                  Keyboard.dismiss();
+                  // Don't dismiss keyboard on button press to prevent UI jumping
                   handleSignUp();
                 }}
                 disabled={loading || !username || !email || !password || !confirmPassword}
@@ -383,6 +415,8 @@ const styles = StyleSheet.create({
     padding: 14,
     fontSize: 16,
     backgroundColor: '#F9F9F9',
+    height: 50,
+    marginBottom: 8,
   },
   signupButton: {
     backgroundColor: '#6B4EFF',

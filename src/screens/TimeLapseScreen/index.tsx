@@ -2,9 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Alert, Platform, Linking } from 'react-native';
 import { launchCamera, launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
 import { uploadToS3 } from '../../utils/s3Upload';
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, QuerySnapshot, DocumentData } from 'firebase/firestore';
-import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { dynamodbService, TimelapseItem as DbTimelapseItem } from '../../services/dynamodbService';
 
 interface TimeLapseItem {
   id: string;
@@ -27,24 +26,49 @@ const TimeLapseScreen: React.FC<TimeLapseScreenProps> = ({ navigation }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  // Subscribe to real-time updates
   useEffect(() => {
     if (!user) return;
 
-    const q = query(
-      collection(db, 'timelapses'),
-      orderBy('createdAt', 'desc')
-    );
+    const fetchTimelapseItems = async () => {
+      try {
+        const items = await dynamodbService.getTimelapseItems(user.uid);
+        const formattedItems = items.map(item => ({
+          id: item.id || '',
+          userId: item.userId,
+          mediaUrl: item.mediaUrl,
+          type: item.type as 'photo' | 'video',
+          createdAt: new Date(item.createdAt),
+          description: item.description || '',
+          likes: item.likes,
+          comments: []
+        } as TimeLapseItem));
+        
+        setTimelapseItems(formattedItems);
+      } catch (error) {
+        console.error('Error fetching timelapse items:', error);
+      }
+    };
 
-    const unsubscribe = onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
-      const items = snapshot.docs.map((doc: DocumentData) => ({
-        id: doc.id,
-        ...doc.data()
-      })) as TimeLapseItem[];
-      setTimelapseItems(items);
+    fetchTimelapseItems();
+
+    const subscription = dynamodbService.subscribeToTimelapseItems(user.uid, (newItem) => {
+      const formattedItem = {
+        id: newItem.id || '',
+        userId: newItem.userId,
+        mediaUrl: newItem.mediaUrl,
+        type: newItem.type as 'photo' | 'video',
+        createdAt: new Date(newItem.createdAt),
+        description: newItem.description || '',
+        likes: newItem.likes,
+        comments: []
+      } as TimeLapseItem;
+      
+      setTimelapseItems(prev => [formattedItem, ...prev]);
     });
 
-    return () => unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [user]);
 
   const handleTimelapseMedia = async () => {
@@ -98,23 +122,34 @@ const TimeLapseScreen: React.FC<TimeLapseScreenProps> = ({ navigation }) => {
                         name: asset.fileName || `media-${Date.now()}.${asset.type?.includes('video') ? 'mp4' : 'jpg'}`,
                       };
 
-                      // Upload to S3
                       const s3Url = await uploadToS3(file, 'timelapses');
                       setUploadProgress(prev => prev + 1);
 
-                      // Add to Firestore
-                      await addDoc(collection(db, 'timelapses'), {
-                        userId: user?.uid,
+                      const timestamp = Date.now();
+                      const newItem = await dynamodbService.createTimelapseItem({
+                        userId: user?.uid || '',
                         mediaUrl: s3Url,
                         type: asset.type?.includes('video') ? 'video' : 'photo',
-                        createdAt: serverTimestamp(),
+                        createdAt: timestamp,
                         description: '',
                         likes: 0,
-                        comments: [],
+                        likedBy: []
                       });
+                      
+                      return {
+                        id: newItem.id || '',
+                        userId: user?.uid || '',
+                        mediaUrl: s3Url,
+                        type: asset.type?.includes('video') ? 'video' : 'photo',
+                        createdAt: new Date(),
+                        description: '',
+                        likes: 0,
+                        comments: []
+                      } as TimeLapseItem;
                     });
 
-                    await Promise.all(uploadPromises);
+                    const newItems = await Promise.all(uploadPromises);
+                    setTimelapseItems(prev => [...newItems, ...prev]);
                     Alert.alert('Success', 'Media uploaded successfully!');
                   } catch (error) {
                     console.error('Error uploading media:', error);
@@ -126,7 +161,6 @@ const TimeLapseScreen: React.FC<TimeLapseScreenProps> = ({ navigation }) => {
                 }
               });
             } else {
-              // Android implementation remains the same
               launchCamera({
                 mediaType: 'mixed',
                 quality: 0.8,
@@ -153,23 +187,34 @@ const TimeLapseScreen: React.FC<TimeLapseScreenProps> = ({ navigation }) => {
                         name: asset.fileName || `media-${Date.now()}.${asset.type?.includes('video') ? 'mp4' : 'jpg'}`,
                       };
 
-                      // Upload to S3
                       const s3Url = await uploadToS3(file, 'timelapses');
                       setUploadProgress(prev => prev + 1);
 
-                      // Add to Firestore
-                      await addDoc(collection(db, 'timelapses'), {
-                        userId: user?.uid,
+                      const timestamp = Date.now();
+                      const newItem = await dynamodbService.createTimelapseItem({
+                        userId: user?.uid || '',
                         mediaUrl: s3Url,
                         type: asset.type?.includes('video') ? 'video' : 'photo',
-                        createdAt: serverTimestamp(),
+                        createdAt: timestamp,
                         description: '',
                         likes: 0,
-                        comments: [],
+                        likedBy: []
                       });
+                      
+                      return {
+                        id: newItem.id || '',
+                        userId: user?.uid || '',
+                        mediaUrl: s3Url,
+                        type: asset.type?.includes('video') ? 'video' : 'photo',
+                        createdAt: new Date(),
+                        description: '',
+                        likes: 0,
+                        comments: []
+                      } as TimeLapseItem;
                     });
 
-                    await Promise.all(uploadPromises);
+                    const newItems = await Promise.all(uploadPromises);
+                    setTimelapseItems(prev => [...newItems, ...prev]);
                     Alert.alert('Success', 'Media uploaded successfully!');
                   } catch (error) {
                     console.error('Error uploading media:', error);
@@ -228,23 +273,34 @@ const TimeLapseScreen: React.FC<TimeLapseScreenProps> = ({ navigation }) => {
                         name: asset.fileName || `media-${Date.now()}.${asset.type?.includes('video') ? 'mp4' : 'jpg'}`,
                       };
 
-                      // Upload to S3
                       const s3Url = await uploadToS3(file, 'timelapses');
                       setUploadProgress(prev => prev + 1);
 
-                      // Add to Firestore
-                      await addDoc(collection(db, 'timelapses'), {
-                        userId: user?.uid,
+                      const timestamp = Date.now();
+                      const newItem = await dynamodbService.createTimelapseItem({
+                        userId: user?.uid || '',
                         mediaUrl: s3Url,
                         type: asset.type?.includes('video') ? 'video' : 'photo',
-                        createdAt: serverTimestamp(),
+                        createdAt: timestamp,
                         description: '',
                         likes: 0,
-                        comments: [],
+                        likedBy: []
                       });
+                      
+                      return {
+                        id: newItem.id || '',
+                        userId: user?.uid || '',
+                        mediaUrl: s3Url,
+                        type: asset.type?.includes('video') ? 'video' : 'photo',
+                        createdAt: new Date(),
+                        description: '',
+                        likes: 0,
+                        comments: []
+                      } as TimeLapseItem;
                     });
 
-                    await Promise.all(uploadPromises);
+                    const newItems = await Promise.all(uploadPromises);
+                    setTimelapseItems(prev => [...newItems, ...prev]);
                     Alert.alert('Success', 'Media uploaded successfully!');
                   } catch (error) {
                     console.error('Error uploading media:', error);
@@ -256,7 +312,6 @@ const TimeLapseScreen: React.FC<TimeLapseScreenProps> = ({ navigation }) => {
                 }
               });
             } else {
-              // Android implementation remains the same
               launchImageLibrary({
                 mediaType: 'mixed',
                 quality: 0.8,
@@ -283,23 +338,34 @@ const TimeLapseScreen: React.FC<TimeLapseScreenProps> = ({ navigation }) => {
                         name: asset.fileName || `media-${Date.now()}.${asset.type?.includes('video') ? 'mp4' : 'jpg'}`,
                       };
 
-                      // Upload to S3
                       const s3Url = await uploadToS3(file, 'timelapses');
                       setUploadProgress(prev => prev + 1);
 
-                      // Add to Firestore
-                      await addDoc(collection(db, 'timelapses'), {
-                        userId: user?.uid,
+                      const timestamp = Date.now();
+                      const newItem = await dynamodbService.createTimelapseItem({
+                        userId: user?.uid || '',
                         mediaUrl: s3Url,
                         type: asset.type?.includes('video') ? 'video' : 'photo',
-                        createdAt: serverTimestamp(),
+                        createdAt: timestamp,
                         description: '',
                         likes: 0,
-                        comments: [],
+                        likedBy: []
                       });
+                      
+                      return {
+                        id: newItem.id || '',
+                        userId: user?.uid || '',
+                        mediaUrl: s3Url,
+                        type: asset.type?.includes('video') ? 'video' : 'photo',
+                        createdAt: new Date(),
+                        description: '',
+                        likes: 0,
+                        comments: []
+                      } as TimeLapseItem;
                     });
 
-                    await Promise.all(uploadPromises);
+                    const newItems = await Promise.all(uploadPromises);
+                    setTimelapseItems(prev => [...newItems, ...prev]);
                     Alert.alert('Success', 'Media uploaded successfully!');
                   } catch (error) {
                     console.error('Error uploading media:', error);

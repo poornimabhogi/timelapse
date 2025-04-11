@@ -49,6 +49,19 @@ type Timelapse {
   createdAt: String
 }
 
+type TimelapseItem @model 
+  @key(name: "byUser", fields: ["userId", "createdAt"], queryField: "timelapseItemsByUser") {
+  id: ID!
+  userId: ID!
+  mediaUrl: String!
+  type: String!
+  createdAt: AWSTimestamp!
+  description: String
+  likes: Int!
+  likedBy: [String]
+  duration: Int
+}
+
 type Query {
   getUser(id: ID!): User
   getUserByUsername(username: String!): User
@@ -62,6 +75,12 @@ type Query {
   getFollowers(userId: ID!): [User]
   getFollowing(userId: ID!): [User]
   listFollowedPosts(userId: ID!, limit: Int, nextToken: String): [Post]
+  listTimelapseItems(userId: ID, limit: Int, nextToken: String): TimelapseItemConnection
+}
+
+type TimelapseItemConnection {
+  items: [TimelapseItem]
+  nextToken: String
 }
 
 type Mutation {
@@ -89,6 +108,9 @@ type Mutation {
   
   # Generate a presigned URL for S3 uploads
   generatePresignedUrl(fileName: String!, fileType: String!): PresignedUrlResponse
+  createTimelapseItem(input: CreateTimelapseItemInput!): TimelapseItem
+  updateTimelapseItem(input: UpdateTimelapseItemInput!): TimelapseItem
+  deleteTimelapseItem(input: DeleteTimelapseItemInput!): TimelapseItem
 }
 
 # Response type for presigned URL generation
@@ -96,6 +118,33 @@ type PresignedUrlResponse {
   uploadUrl: String!
   fileUrl: String!
   key: String!
+}
+
+input CreateTimelapseItemInput {
+  userId: ID!
+  mediaUrl: String!
+  type: String!
+  createdAt: AWSTimestamp!
+  description: String
+  likes: Int!
+  likedBy: [String]
+  duration: Int
+}
+
+input UpdateTimelapseItemInput {
+  id: ID!
+  likes: Int
+  likedBy: [String]
+  description: String
+}
+
+input DeleteTimelapseItemInput {
+  id: ID!
+}
+
+extend type Subscription {
+  onCreateTimelapseItem(userId: ID): TimelapseItem
+    @aws_subscribe(mutations: ["createTimelapseItem"])
 }
 
 schema {
