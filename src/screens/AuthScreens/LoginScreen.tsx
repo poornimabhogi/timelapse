@@ -28,24 +28,24 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
   onNavigateToSignup,
   onNavigateToForgotPassword
 }) => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { signIn, continueAsGuest } = useAuth();
 
   const handleLogin = async () => {
-    if (!username || !password) {
-      Alert.alert('Error', 'Please enter both username and password');
+    if (!email || !password) {
+      Alert.alert('Error', 'Please enter both email and password');
       return;
     }
 
     setLoading(true);
     try {
-      await signIn(username, password);
+      await signIn(email, password);
       onChangeScreen('home');
     } catch (error) {
       console.error('Login error:', error);
-      Alert.alert('Login Failed', 'Invalid username or password. Please try again.');
+      Alert.alert('Login Failed', 'Invalid email or password. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -79,13 +79,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
             <Text style={styles.welcomeText}>Welcome Back</Text>
             
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Username</Text>
+              <Text style={styles.inputLabel}>Email</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="Enter your username"
-                value={username}
-                onChangeText={setUsername}
+                placeholder="Enter your email address"
+                value={email}
+                onChangeText={setEmail}
                 autoCapitalize="none"
+                keyboardType="email-address"
+                autoCorrect={false}
               />
             </View>
 
@@ -108,9 +110,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={[styles.loginButton, (!username || !password) && styles.loginButtonDisabled]}
+              style={[styles.loginButton, (!email || !password) && styles.loginButtonDisabled]}
               onPress={handleLogin}
-              disabled={loading || !username || !password}
+              disabled={loading || !email || !password}
             >
               {loading ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />

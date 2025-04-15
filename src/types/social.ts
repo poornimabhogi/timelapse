@@ -7,6 +7,7 @@ export interface SocialFeedItem {
   mediaUrls: string[];
   likes: number;
   likedBy?: string[];
+  isLiked?: boolean;
   comments: Comment[];
   createdAt: Date;
   updatedAt: Date;

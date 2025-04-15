@@ -14,6 +14,9 @@ import {
   PermissionsAndroid,
   Linking,
   ActivityIndicator,
+  AppState,
+  StatusBar,
+  FlatList,
 } from 'react-native';
 import Video from 'react-native-video';
 import { ProfileScreenProps } from '../../types/interfaces';
@@ -30,8 +33,8 @@ import SellerVerificationModal from './components/SellerVerificationModal';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { SellerVerificationData } from './components/SellerVerificationForm';
 import TimelapseViewer from '../../components/TimelapseViewer';
-import { dynamodbService, TimelapseItem as DbTimelapseItem } from '../../services/dynamodbService';
-// VideoPreview component is implemented but not used in this component
+import { dynamodbService, TimelapseItem as DbTimelapseItem, dataUpdateManager } from '../../services/dynamodbService';
+import VideoPlayer from '../../components/VideoPlayer';
 
 // Custom interface for media items
 interface MediaItem {
@@ -90,23 +93,10 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   // Example user details
   const [userDetails, setUserDetails] = useState<UserDetails>({
     name: user?.username || 'User Name',
-    email: user?.email || 'user@example.com',
+    email: user?.attributes?.email || 'user@example.com',
     phone: '+1 123 456 7890',
     bio: 'This is a short bio that describes the user in a few words.'
   });
-  
-  // Update user details when user changes
-  useEffect(() => {
-    if (user) {
-      setUserDetails(prevDetails => ({
-        ...prevDetails,
-        name: user.username || 'User Name',
-        email: user.email || 'user@example.com',
-        phone: user.attributes?.phone || '+1 123 456 7890',
-        bio: user.attributes?.bio || 'This is a short bio that describes the user in a few words.'
-      }));
-    }
-  }, [user]);
   
   // Temporary state for editing
   const [editableUserDetails, setEditableUserDetails] = useState<UserDetails>(userDetails);
@@ -175,6 +165,30 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
 
     return () => {
       subscription.unsubscribe();
+    };
+  }, [user]);
+
+  // Add effect to listen for timelapse updates
+  useEffect(() => {
+    // Only set up listener if user is logged in
+    if (!user) return;
+    
+    console.log('Setting up timelapse update listener');
+    
+    // Create refresh function
+    const handleTimelapseUpdate = () => {
+      console.log('Timelapse update detected, refreshing data');
+      refreshTimelapseData();
+    };
+    
+    // Listen for both general updates and user-specific updates
+    dataUpdateManager.addListener('timelapses-updated', handleTimelapseUpdate);
+    dataUpdateManager.addListener(`user-timelapses-${user.uid}`, handleTimelapseUpdate);
+    
+    // Clean up listeners on unmount
+    return () => {
+      dataUpdateManager.removeListener('timelapses-updated', handleTimelapseUpdate);
+      dataUpdateManager.removeListener(`user-timelapses-${user.uid}`, handleTimelapseUpdate);
     };
   }, [user]);
 
@@ -343,9 +357,26 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
     Alert.alert('Success', 'Your profile has been updated successfully!');
   };
 
-  // Update the handleTimelapseMedia function to use DynamoDB
-  const handleTimelapseMedia = () => {
+  // Add this validation function at a good location in the file
+  const validateUser = (): boolean => {
+    if (!user || !user.uid) {
+      console.error('No user ID available for upload');
+      Alert.alert(
+        'Authentication Required', 
+        'Please sign in to upload photos and videos.',
+        [{ text: 'OK' }]
+      );
+      return false;
+    }
+    return true;
+  };
+  
+  // Then add the validation check to handleTimelapseMedia
+  const handleTimelapseMedia = async () => {
     try {
+      // Validate that we have a user ID before proceeding
+      if (!validateUser()) return;
+      
       // Set photo picker active flag before opening the picker
       if (Platform.OS === 'android') {
         setPhotoPickerActive(true);
@@ -405,51 +436,14 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
                           setVideoToProcess(asset);
                           setIsVideoModalVisible(true);
                         } else {
-                          // Video is under 1 minute - UPLOAD TO S3 AND SAVE TO DYNAMODB
-                          try {
-                            setIsUploading(true);
-                            
-                            const file = {
-                              uri: asset.uri || '',
-                              type: asset.type || 'video/mp4',
-                              name: asset.fileName || `video-${Date.now()}.mp4`,
-                            };
-
-                            // Upload to S3
-                            const s3Url = await uploadToS3(file, 'timelapses');
-                            
-                            // Add to DynamoDB via AppSync
-                            const timestamp = Date.now();
-                            await dynamodbService.createTimelapseItem({
-                              userId: user?.uid || '',
-                              mediaUrl: s3Url,
-                              type: 'video',
-                              createdAt: timestamp,
-                              description: '',
-                              likes: 0,
-                              likedBy: [],
-                              duration: duration,
-                            });
-                            
-                            // Still add to local state for immediate display
-                            const newMedia: MediaItem = {
-                              uri: s3Url,
-                              type: 'video',
-                              timestamp: timestamp,
-                              likes: 0,
-                              likedBy: [],
-                              duration: duration,
-                            };
-                            setTimelapseItems(prev => [...prev, newMedia]);
-                            
-                            Alert.alert('Success', 'Video uploaded successfully!');
-                          } catch (error) {
-                            console.error('Error uploading video:', error);
-                            Alert.alert('Error', 'Failed to upload video. Please try again.');
-                          } finally {
-                            setIsUploading(false);
-                            setVideoProcessing(false);
-                          }
+                          // Video is under 1 minute - use the uploadMedia helper
+                          const file = {
+                            uri: asset.uri || '',
+                            type: asset.type || 'video/mp4',
+                            name: asset.fileName || `video-${Date.now()}.mp4`,
+                          };
+                          
+                          await uploadMedia(file, 'video', duration);
                         }
                       } catch (error) {
                         console.error('Error processing video:', error);
@@ -457,48 +451,14 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
                         setVideoProcessing(false);
                       }
                     } else {
-                      // It's a photo - UPLOAD TO S3 AND SAVE TO DYNAMODB
-                      try {
-                        setIsUploading(true);
-                        
-                        const file = {
-                          uri: asset.uri || '',
-                          type: asset.type || 'image/jpeg',
-                          name: asset.fileName || `photo-${Date.now()}.jpg`,
-                        };
-
-                        // Upload to S3
-                        const s3Url = await uploadToS3(file, 'timelapses');
-                        
-                        // Add to DynamoDB via AppSync
-                        const timestamp = Date.now();
-                        await dynamodbService.createTimelapseItem({
-                          userId: user?.uid || '',
-                          mediaUrl: s3Url,
-                          type: 'photo',
-                          createdAt: timestamp,
-                          description: '',
-                          likes: 0,
-                          likedBy: [],
-                        });
-                        
-                        // Still add to local state for immediate display
-                        const newMedia: MediaItem = {
-                          uri: s3Url,
-                          type: 'photo',
-                          timestamp: timestamp,
-                          likes: 0,
-                          likedBy: [],
-                        };
-                        setTimelapseItems(prev => [...prev, newMedia]);
-                        
-                        Alert.alert('Success', 'Photo uploaded successfully!');
-                      } catch (error) {
-                        console.error('Error uploading photo:', error);
-                        Alert.alert('Error', 'Failed to upload photo. Please try again.');
-                      } finally {
-                        setIsUploading(false);
-                      }
+                      // It's a photo - use the uploadMedia helper
+                      const file = {
+                        uri: asset.uri || '',
+                        type: asset.type || 'image/jpeg',
+                        name: asset.fileName || `photo-${Date.now()}.jpg`,
+                      };
+                      
+                      await uploadMedia(file, 'photo');
                     }
                   }
                 });
@@ -557,51 +517,14 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
                           setVideoToProcess(asset);
                           setIsVideoModalVisible(true);
                         } else {
-                          // Video is under 1 minute - UPLOAD TO S3 AND SAVE TO DYNAMODB
-                          try {
-                            setIsUploading(true);
-                            
-                            const file = {
-                              uri: asset.uri || '',
-                              type: asset.type || 'video/mp4',
-                              name: asset.fileName || `video-${Date.now()}.mp4`,
-                            };
-
-                            // Upload to S3
-                            const s3Url = await uploadToS3(file, 'timelapses');
-                            
-                            // Add to DynamoDB via AppSync
-                            const timestamp = Date.now();
-                            await dynamodbService.createTimelapseItem({
-                              userId: user?.uid || '',
-                              mediaUrl: s3Url,
-                              type: 'video',
-                              createdAt: timestamp,
-                              description: '',
-                              likes: 0,
-                              likedBy: [],
-                              duration: duration,
-                            });
-                            
-                            // Still add to local state for immediate display
-                            const newMedia: MediaItem = {
-                              uri: s3Url,
-                              type: 'video',
-                              timestamp: timestamp,
-                              likes: 0,
-                              likedBy: [],
-                              duration: duration,
-                            };
-                            setTimelapseItems(prev => [...prev, newMedia]);
-                            
-                            Alert.alert('Success', 'Video uploaded successfully!');
-                          } catch (error) {
-                            console.error('Error uploading video:', error);
-                            Alert.alert('Error', 'Failed to upload video. Please try again.');
-                          } finally {
-                            setIsUploading(false);
-                            setVideoProcessing(false);
-                          }
+                          // Video is under 1 minute - use the uploadMedia helper
+                          const file = {
+                            uri: asset.uri || '',
+                            type: asset.type || 'video/mp4',
+                            name: asset.fileName || `video-${Date.now()}.mp4`,
+                          };
+                          
+                          await uploadMedia(file, 'video', duration);
                         }
                       } catch (error) {
                         console.error('Error processing video:', error);
@@ -609,48 +532,14 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
                         setVideoProcessing(false);
                       }
                     } else {
-                      // It's a photo - UPLOAD TO S3 AND SAVE TO DYNAMODB
-                      try {
-                        setIsUploading(true);
-                        
-                        const file = {
-                          uri: asset.uri || '',
-                          type: asset.type || 'image/jpeg',
-                          name: asset.fileName || `photo-${Date.now()}.jpg`,
-                        };
-
-                        // Upload to S3
-                        const s3Url = await uploadToS3(file, 'timelapses');
-                        
-                        // Add to DynamoDB via AppSync
-                        const timestamp = Date.now();
-                        await dynamodbService.createTimelapseItem({
-                          userId: user?.uid || '',
-                          mediaUrl: s3Url,
-                          type: 'photo',
-                          createdAt: timestamp,
-                          description: '',
-                          likes: 0,
-                          likedBy: [],
-                        });
-                        
-                        // Still add to local state for immediate display
-                        const newMedia: MediaItem = {
-                          uri: s3Url,
-                          type: 'photo',
-                          timestamp: timestamp,
-                          likes: 0,
-                          likedBy: [],
-                        };
-                        setTimelapseItems(prev => [...prev, newMedia]);
-                        
-                        Alert.alert('Success', 'Photo uploaded successfully!');
-                      } catch (error) {
-                        console.error('Error uploading photo:', error);
-                        Alert.alert('Error', 'Failed to upload photo. Please try again.');
-                      } finally {
-                        setIsUploading(false);
-                      }
+                      // It's a photo - use the uploadMedia helper
+                      const file = {
+                        uri: asset.uri || '',
+                        type: asset.type || 'image/jpeg',
+                        name: asset.fileName || `photo-${Date.now()}.jpg`,
+                      };
+                      
+                      await uploadMedia(file, 'photo');
                     }
                   }
                 });
@@ -734,6 +623,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
 
   const handleFeaturePostMedia = () => {
     try {
+      // Validate that we have a user ID before proceeding
+      if (!validateUser()) return;
+      
       // Set photo picker active flag before opening the picker
       if (Platform.OS === 'android') {
         setPhotoPickerActive(true);
@@ -934,7 +826,22 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
       }
 
       // Create feature post using AWS AppSync
-      await awsConfig.createFeaturePost(post, mediaUrls);
+      const response = await awsConfig.createFeaturePost(post, mediaUrls);
+      console.log('Feature post created with response:', response);
+      
+      if (response.data && response.data.createFeaturePost) {
+        // Add to local state - the subscription will also update this, but we add it immediately for better UX
+        const newPost = {
+          id: response.data.createFeaturePost.id,
+          text: post,
+          mediaUrls: mediaUrls,
+          likes: 0,
+          comments: [],
+          createdAt: new Date(),
+        };
+        
+        setFeaturePosts(prev => [newPost, ...prev]);
+      }
 
       // Reset form
       setPost('');
@@ -1135,17 +1042,16 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
         const currentLikedBy = media[itemIndex].likedBy || [];
         
         // Create updated likedBy array based on the like status
-        let updatedLikedBy: string[] = [];
+        let updatedLikedBy: string[] = [...currentLikedBy];
         
         if (userLiked && user) {
           // Add user ID if not already present and user exists
-          updatedLikedBy = [...currentLikedBy];
           if (!updatedLikedBy.includes(user.uid)) {
             updatedLikedBy.push(user.uid);
           }
-        } else {
+        } else if (user) {
           // Remove user ID
-          updatedLikedBy = currentLikedBy.filter(id => id !== user?.uid);
+          updatedLikedBy = updatedLikedBy.filter(id => id !== user.uid);
         }
         
         media[itemIndex] = {
@@ -1164,10 +1070,11 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
         console.log('Updating selected timelapse in ProfileScreen');
         
         // Create updated version of the selected timelapse
-        let updatedSelectedLikedBy: string[] = selectedTimelapse.likedBy || [];
+        const currentSelectedLikedBy = selectedTimelapse.likedBy || [];
+        let updatedSelectedLikedBy: string[] = [...currentSelectedLikedBy];
         
         if (userLiked && user && !updatedSelectedLikedBy.includes(user.uid)) {
-          updatedSelectedLikedBy = [...updatedSelectedLikedBy, user.uid];
+          updatedSelectedLikedBy.push(user.uid);
         } else if (!userLiked && user) {
           updatedSelectedLikedBy = updatedSelectedLikedBy.filter(id => id !== user.uid);
         }
@@ -1186,26 +1093,26 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
 
   // Update handleTimelapseDelete to use DynamoDB
   const handleTimelapseDelete = async () => {
-    if (selectedTimelapse && selectedTimelapse.id) {
-      try {
-        console.log('Deleting timelapse:', selectedTimelapse.uri);
-        
-        // Delete from DynamoDB via AppSync
-        await dynamodbService.deleteTimelapseItem(selectedTimelapse.id);
-        
-        // Remove from local state
-        setTimelapseItems(prev => prev.filter(item => item.id !== selectedTimelapse.id));
-        
-        // Close the viewer
-        setTimelapseViewerVisible(false);
-        setSelectedTimelapse(null);
-        
-        // Show success message
-        Alert.alert('Success', 'Timelapse deleted successfully');
-      } catch (error) {
-        console.error('Error deleting timelapse:', error);
-        Alert.alert('Error', 'Failed to delete timelapse. Please try again.');
-      }
+    if (!selectedTimelapse?.id) return;
+    
+    try {
+      console.log(`Deleting timelapse with ID: ${selectedTimelapse.id}`);
+      await dynamodbService.deleteTimelapseItem(selectedTimelapse.id);
+      
+      // Update local state
+      setTimelapseItems(prev => prev.filter(item => item.id !== selectedTimelapse.id));
+      
+      // Close modals
+      setSelectedTimelapse(null);
+      setTimelapseViewerVisible(false);
+      
+      // Notify other screens that a timelapse was deleted
+      dataUpdateManager.notifyListeners('timelapses-updated');
+      
+      Alert.alert('Success', 'Timelapse deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting timelapse:', error);
+      Alert.alert('Error', 'Failed to delete timelapse. Please try again.');
     }
   };
 
@@ -1226,7 +1133,8 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   // Update handleProcessedVideo function to use DynamoDB
   const handleProcessedVideo = async (processedUri: string, duration: number) => {
     try {
-      setIsUploading(true);
+      // Validate that we have a user ID before proceeding
+      if (!validateUser()) return;
       
       const fileName = `processed-video-${Date.now()}.mp4`;
       const file = {
@@ -1235,42 +1143,16 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
         name: fileName,
       };
 
-      // Upload to S3
-      const s3Url = await uploadToS3(file, 'timelapses');
+      // Use the uploadMedia helper
+      const newMedia = await uploadMedia(file, 'video', duration);
       
-      // Add to DynamoDB via AppSync
-      const timestamp = Date.now();
-      const newItem = await dynamodbService.createTimelapseItem({
-        userId: user?.uid || '',
-        mediaUrl: s3Url,
-        type: 'video',
-        createdAt: timestamp,
-        description: '',
-        likes: 0,
-        likedBy: [],
-        duration: duration,
-      });
-      
-      // Add to local state
-      const newMedia: MediaItem = {
-        id: newItem.id,
-        uri: s3Url,
-        type: 'video',
-        timestamp: timestamp,
-        likes: 0,
-        likedBy: [],
-        duration: duration,
-      };
-      
-      setTimelapseItems(prev => [...prev, newMedia]);
-      setIsVideoModalVisible(false);
-      setVideoToProcess(null);
-      Alert.alert('Success', 'Processed video uploaded successfully!');
+      if (newMedia) {
+        setIsVideoModalVisible(false);
+        setVideoToProcess(null);
+      }
     } catch (error) {
       console.error('Error uploading processed video:', error);
       Alert.alert('Error', 'Failed to upload processed video. Please try again.');
-    } finally {
-      setIsUploading(false);
     }
   };
 
@@ -1278,6 +1160,189 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   const [videoToProcess, setVideoToProcess] = useState<Asset | null>(null);
   const [isVideoModalVisible, setIsVideoModalVisible] = useState(false);
   const [videoProcessing, setVideoProcessing] = useState(false);
+
+  // Add state for app state
+  const [appState, setAppState] = useState(AppState.currentState);
+
+  // Function to refresh all timelapse data
+  const refreshTimelapseData = async () => {
+    console.log("ProfileScreen: Refreshing timelapse data");
+    if (!user) return;
+    
+    try {
+      // Don't show loading state right away to avoid flickering UI
+      let loadingTimeout: NodeJS.Timeout | null = setTimeout(() => {
+        setIsUploading(true);
+      }, 500);
+      
+      // Keep reference to current data in case of error
+      const currentData = [...timelapseItems];
+      
+      try {
+        // Get the data
+        const items = await dynamodbService.getTimelapseItems(user.uid);
+        
+        // Cancel loading indicator if it hasn't shown yet
+        if (loadingTimeout) {
+          clearTimeout(loadingTimeout);
+          loadingTimeout = null;
+        }
+        
+        if (items && Array.isArray(items) && items.length > 0) {
+          console.log(`Found ${items.length} timelapse items for user`);
+          
+          // Convert DynamoDB items to MediaItems format
+          const mediaItems: MediaItem[] = items.map(item => ({
+            id: item.id,
+            uri: item.mediaUrl,
+            type: item.type,
+            timestamp: item.createdAt,
+            likes: item.likes,
+            likedBy: item.likedBy,
+            duration: item.duration
+          }));
+          
+          // Sort by newest first
+          const sortedItems = mediaItems.sort((a, b) => 
+            (b.timestamp || 0) - (a.timestamp || 0)
+          );
+          
+          // Update state with the new items only if we got valid data
+          if (sortedItems.length > 0) {
+            console.log("Updating state with new timelapse items:", sortedItems.length);
+            setTimelapseItems(sortedItems);
+          } else if (items.length === 0) {
+            // Only clear if we know for sure there are 0 items
+            console.log("No timelapse items found for user, clearing state");
+            setTimelapseItems([]);
+          }
+        } else {
+          // Keep existing data if we didn't get a valid response
+          console.log("Invalid response from getTimelapseItems, keeping existing data");
+        }
+      } catch (error) {
+        console.error("Error refreshing timelapse data:", error);
+        // Restore previous data on error
+        setTimelapseItems(currentData);
+      }
+    } catch (outerError) {
+      console.error("Outer error in refreshTimelapseData:", outerError);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Add effect to handle app state changes
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (appState.match(/inactive|background/) && nextAppState === 'active') {
+        console.log('App has come to the foreground - refreshing ProfileScreen');
+        refreshTimelapseData();
+      }
+      setAppState(nextAppState);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [appState, user]);
+
+  // Add effect to refresh on screen focus
+  useEffect(() => {
+    if (onChangeScreen && onChangeScreen.toString().includes('profile')) {
+      console.log('Detected navigation to ProfileScreen');
+      refreshTimelapseData();
+    }
+  }, [onChangeScreen]);
+
+  // Update the existing fetchTimelapseItems function to use our refresh function
+  const fetchTimelapseItems = async () => {
+    refreshTimelapseData();
+  };
+
+  // Make sure to call fetchTimelapseItems in the initial useEffect
+  useEffect(() => {
+    fetchTimelapseItems();
+    // ...existing code...
+  }, [user]);
+
+  // Add this improved upload handler function
+  const uploadMedia = async (file: any, type: 'photo' | 'video', duration?: number) => {
+    try {
+      setIsUploading(true);
+      console.log(`Starting ${type} upload process...`);
+      
+      if (!user?.uid) {
+        console.error('No user ID available');
+        Alert.alert('Authentication Required', 'Please sign in to upload media.');
+        return null;
+      }
+      
+      // Upload to S3
+      console.log(`Uploading ${type} to S3...`);
+      const s3Url = await uploadToS3(file, 'timelapses');
+      console.log(`S3 upload successful, URL: ${s3Url}`);
+      
+      // Prepare DynamoDB item
+      const timestamp = Date.now();
+      const mediaData = {
+        userId: user.uid,
+        mediaUrl: s3Url,
+        type: type,
+        createdAt: timestamp,
+        description: '',
+        likes: 0,
+        likedBy: [],
+      };
+      
+      // Add duration if it's a video
+      if (type === 'video' && duration) {
+        Object.assign(mediaData, { duration });
+      }
+      
+      // Add to DynamoDB
+      console.log(`Saving ${type} to DynamoDB...`, mediaData);
+      const newItem = await dynamodbService.createTimelapseItem(mediaData);
+      console.log(`DynamoDB save successful, ID: ${newItem.id}`);
+      
+      if (!newItem || !newItem.id) {
+        throw new Error(`Failed to create ${type} item in DynamoDB`);
+      }
+      
+      // Add to local state for immediate display
+      const newMedia: MediaItem = {
+        id: newItem.id,
+        uri: s3Url,
+        type: type,
+        timestamp: timestamp,
+        likes: 0,
+        likedBy: [],
+      };
+      
+      // Add duration if it's a video
+      if (type === 'video' && duration) {
+        Object.assign(newMedia, { duration });
+      }
+      
+      // Add to the beginning of the array (newest first)
+      setTimelapseItems(prev => [newMedia, ...prev]);
+      
+      // Notify other screens about the update
+      dataUpdateManager.notifyListeners('timelapses-updated');
+      
+      Alert.alert('Success', `${type.charAt(0).toUpperCase() + type.slice(1)} uploaded successfully!`);
+      return newMedia;
+    } catch (error) {
+      console.error(`Error uploading ${type}:`, error);
+      Alert.alert('Error', `Failed to upload ${type}. Please try again.`);
+      return null;
+    } finally {
+      setIsUploading(false);
+      if (type === 'video') {
+        setVideoProcessing(false);
+      }
+    }
+  };
 
   return (
     <SafeAreaView style={[
@@ -1381,14 +1446,13 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
                     style={styles.timelapseImage} 
                   />
                 ) : (
-                  <Video
-                    source={{ uri: item.uri }}
+                  <VideoPlayer
+                    uri={item.uri}
                     style={styles.timelapseImage}
                     resizeMode="cover"
-                    repeat={true}
-                    muted={true}
-                    playInBackground={false}
-                    paused={false}
+                    shouldPlay={true}
+                    isLooping={true}
+                    isMuted={true}
                   />
                 )}
                 

@@ -4,6 +4,7 @@ import { signIn, signUp, confirmSignUp, signOut, fetchUserAttributes, getCurrent
 import { configureAmplify } from '../services/aws-config';
 import { Platform, AppState, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { initializeUserInDynamoDB } from '../services/dynamodbService';
 
 // Force reconfigure Amplify when context is used
 configureAmplify();
@@ -11,7 +12,10 @@ configureAmplify();
 interface User {
   uid: string;
   username: string;
-  email: string;
+  name?: string;
+  bio?: string;
+  avatar?: string;
+  following?: string[];
   attributes?: Record<string, any>;
 }
 
@@ -94,14 +98,76 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const currentUser = await getCurrentUser();
       const attributes = await fetchUserAttributes();
       
+      console.log('Current user:', currentUser);
+      console.log('User attributes:', attributes);
+      
+      // Ensure we have a valid username
+      let username = attributes.name || attributes.preferred_username || '';
+      if (!username && attributes.email) {
+        // Use part before @ in email if no name is provided
+        username = attributes.email.split('@')[0];
+      }
+      
+      // Ensure username is not empty
+      if (!username && currentUser.username) {
+        username = currentUser.username;
+      }
+      
+      // Default fallback
+      if (!username) {
+        username = `user_${attributes.sub?.substring(0, 8) || Date.now()}`;
+      }
+      
       const userInfo: User = {
         uid: attributes.sub || currentUser.userId,
-        username: attributes.name || currentUser.username,
-        email: attributes.email || '',
+        username: username,
+        name: attributes.name,
+        bio: attributes.bio,
+        avatar: attributes.picture,
+        following: undefined, // Will be populated later after fetching from DynamoDB
         attributes: attributes
       };
       
       setUser(userInfo);
+      
+      // Initialize user in DynamoDB
+      try {
+        console.log('Initializing user in DynamoDB during checkUser:', userInfo.uid);
+        console.log('Using username:', username);
+        
+        // Retry user initialization up to 3 times
+        let attempts = 0;
+        let success = false;
+        while (attempts < 3 && !success) {
+          attempts++;
+          try {
+            const result = await initializeUserInDynamoDB(
+              userInfo.uid,
+              username,
+              attributes.email || ''
+            );
+            if (result) {
+              console.log(`User initialized successfully on attempt ${attempts}:`, result);
+              success = true;
+            } else {
+              console.log(`User initialization returned null on attempt ${attempts}`);
+              // Wait a short time before retrying
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          } catch (attemptError) {
+            console.error(`Error on initialization attempt ${attempts}:`, attemptError);
+            // Wait longer between retries
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+          }
+        }
+        
+        if (!success) {
+          console.warn('Failed to initialize user after multiple attempts, but continuing app flow');
+        }
+      } catch (dbError) {
+        console.error('Error initializing user in DynamoDB during checkUser:', dbError);
+        // Continue anyway, as this shouldn't prevent app usage
+      }
     } catch (error) {
       console.log('User not authenticated', error);
       setUser(null);
@@ -120,14 +186,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const currentUser = await getCurrentUser();
         const attributes = await fetchUserAttributes();
         
+        // Ensure we have a valid username
+        let displayUsername = attributes.name || attributes.preferred_username || '';
+        if (!displayUsername && attributes.email) {
+          // Use part before @ in email if no name is provided
+          displayUsername = attributes.email.split('@')[0];
+        }
+        
+        // Ensure username is not empty
+        if (!displayUsername && currentUser.username) {
+          displayUsername = currentUser.username;
+        }
+        
+        // Default fallback
+        if (!displayUsername) {
+          displayUsername = `user_${attributes.sub?.substring(0, 8) || Date.now()}`;
+        }
+        
         const userInfo: User = {
           uid: attributes.sub || currentUser.userId,
-          username: attributes.name || currentUser.username,
-          email: attributes.email || '',
+          username: displayUsername,
+          name: attributes.name,
+          bio: attributes.bio,
+          avatar: attributes.picture,
+          following: undefined, // Will be populated later after fetching from DynamoDB
           attributes: attributes
         };
         
         setUser(userInfo);
+        
+        // Initialize user in DynamoDB
+        try {
+          console.log('Initializing user in DynamoDB:', userInfo.uid);
+          console.log('Using username:', displayUsername);
+          await initializeUserInDynamoDB(
+            userInfo.uid,
+            displayUsername,
+            attributes.email || ''
+          );
+        } catch (dbError) {
+          console.error('Error initializing user in DynamoDB:', dbError);
+          // Continue anyway, as this shouldn't prevent app usage
+        }
+        
         return userInfo;
       }
     } catch (error) {
@@ -149,6 +250,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           userAttributes: {
             email: email,
             name: username,
+            // Add preferred_username attribute to ensure username is saved in Cognito
+            preferred_username: username,
           },
         },
       });
@@ -174,7 +277,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   async function handleConfirmSignUp(username: string, code: string) {
     try {
       // In our Cognito setup, the actual username is the email
-      return await confirmSignUp({ username, confirmationCode: code });
+      const result = await confirmSignUp({ username, confirmationCode: code });
+      
+      if (result.isSignUpComplete) {
+        // Try to auto sign in if confirmation is successful
+        try {
+          // We'd need the password here, but we don't have it at this point
+          // Instead, we can try to initialize the DynamoDB record
+          // based on what we know
+          
+          // Get the userId from the signup result if available
+          // or construct a temporary ID to be corrected on next login
+          const tempUserId = `temp-${Date.now()}`;
+          const extractedUsername = username.split('@')[0]; // Use part before @ in email
+          
+          console.log('Initializing user in DynamoDB after confirmation');
+          await initializeUserInDynamoDB(
+            tempUserId,
+            extractedUsername,
+            username
+          );
+        } catch (initError) {
+          console.error('Error initializing user after confirmation:', initError);
+          // Continue anyway
+        }
+      }
+      
+      return result;
     } catch (error) {
       console.log('Error confirming sign up', error);
       throw error;
@@ -296,14 +425,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }
 
-  // Continue as guest
-  function handleContinueAsGuest() {
-    // Set a guest user
+  // Continue as guest mode - revert back to original minimal implementation
+  function continueAsGuest() {
+    // Set a guest user with minimal functionality
     setUser({
       uid: 'guest-' + Date.now(),
       username: 'Guest',
-      email: 'guest@example.com'
+      name: 'Guest',
+      bio: 'This is a guest account. No personal information is stored.',
+      avatar: 'https://example.com/guest-avatar.jpg',
+      following: [],
     });
+    setLoading(false);
   }
 
   return (
@@ -317,7 +450,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signOut: handleSignOut, 
         resetPassword: handleResetPassword, 
         confirmResetPassword: handleConfirmResetPassword,
-        continueAsGuest: handleContinueAsGuest,
+        continueAsGuest: continueAsGuest,
         setPhotoPickerActive
       }}
     >

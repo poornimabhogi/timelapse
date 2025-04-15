@@ -23,7 +23,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
 }) => {
   const [isAndroid15, setIsAndroid15] = useState(false);
   const screenWidth = Dimensions.get('window').width;
-  const { signOut } = useAuth();
+  const { user, signOut } = useAuth();
   
   useEffect(() => {
     console.log('HomeScreen mounted');
@@ -38,6 +38,20 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
       console.log('HomeScreen unmounted');
     };
   }, []);
+
+  // Get display name from user context
+  const getDisplayName = () => {
+    if (!user) return 'Guest';
+    
+    // First try to use the user's name
+    if (user.name) return user.name;
+    
+    // Then fall back to username
+    if (user.username) return user.username;
+    
+    // Last resort, use part of the UID
+    return `User ${user.uid.substring(0, 5)}`;
+  };
 
   const handleLogout = async () => {
     try {
@@ -151,7 +165,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
       >
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Hello, User!</Text>
+            <Text style={styles.greeting}>Hello, {getDisplayName()}!</Text>
             <Text style={styles.date}>
               {new Date().toLocaleDateString('en-US', {
                 weekday: 'long',

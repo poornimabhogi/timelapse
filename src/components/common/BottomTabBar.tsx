@@ -14,10 +14,24 @@ const BottomTabBar: React.FC<BottomTabBarProps> = ({ currentScreen, onChangeScre
   // Wrapped navigation function for debugging
   const handleNavigation = (screen: string) => {
     console.log(`Navigating to: ${screen}`);
-    // Add a slight delay to ensure state updates properly
-    setTimeout(() => {
+    
+    // Check if we're already on this screen - if so, we should refresh data
+    if (currentScreen === screen) {
+      console.log(`Already on ${screen} screen - triggering refresh`);
+      
+      // Use a different approach - add a timestamp to force refresh
+      const refreshToken = `${screen}-refresh-${Date.now()}`;
+      onChangeScreen(refreshToken);
+      
+      // Then navigate back to the same screen after a brief delay
+      setTimeout(() => {
+        console.log(`Navigating back to ${screen} after refresh trigger`);
+        onChangeScreen(screen);
+      }, 50);
+    } else {
+      // Navigate to a different screen
       onChangeScreen(screen);
-    }, 50);
+    }
   };
 
   return (

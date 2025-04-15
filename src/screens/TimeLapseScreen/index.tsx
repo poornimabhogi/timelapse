@@ -136,6 +136,13 @@ const TimeLapseScreen: React.FC<TimeLapseScreenProps> = ({ navigation }) => {
                         likedBy: []
                       });
                       
+                      if (!newItem || !newItem.id) {
+                        console.error('Failed to create timelapse item in DynamoDB, got:', newItem);
+                        throw new Error('Failed to save media data to database');
+                      }
+                      
+                      console.log('Successfully created timelapse item with ID:', newItem.id);
+                      
                       return {
                         id: newItem.id || '',
                         userId: user?.uid || '',
@@ -153,7 +160,20 @@ const TimeLapseScreen: React.FC<TimeLapseScreenProps> = ({ navigation }) => {
                     Alert.alert('Success', 'Media uploaded successfully!');
                   } catch (error) {
                     console.error('Error uploading media:', error);
-                    Alert.alert('Error', 'Failed to upload media. Please try again.');
+                    let errorMessage = 'Failed to upload media. Please try again.';
+                    
+                    if (error instanceof Error) {
+                      console.error('Error details:', error.message);
+                      if (error.message.includes('network') || error.message.includes('Network')) {
+                        errorMessage = 'Network error. Please check your internet connection and try again.';
+                      } else if (error.message.includes('permission')) {
+                        errorMessage = 'Permission denied. Please check your app permissions.';
+                      } else if (error.message.includes('database')) {
+                        errorMessage = 'Could not save to database. Please try again later.';
+                      }
+                    }
+                    
+                    Alert.alert('Error', errorMessage);
                   } finally {
                     setIsUploading(false);
                     setUploadProgress(0);
@@ -201,6 +221,13 @@ const TimeLapseScreen: React.FC<TimeLapseScreenProps> = ({ navigation }) => {
                         likedBy: []
                       });
                       
+                      if (!newItem || !newItem.id) {
+                        console.error('Failed to create timelapse item in DynamoDB, got:', newItem);
+                        throw new Error('Failed to save media data to database');
+                      }
+                      
+                      console.log('Successfully created timelapse item with ID:', newItem.id);
+                      
                       return {
                         id: newItem.id || '',
                         userId: user?.uid || '',
@@ -218,7 +245,20 @@ const TimeLapseScreen: React.FC<TimeLapseScreenProps> = ({ navigation }) => {
                     Alert.alert('Success', 'Media uploaded successfully!');
                   } catch (error) {
                     console.error('Error uploading media:', error);
-                    Alert.alert('Error', 'Failed to upload media. Please try again.');
+                    let errorMessage = 'Failed to upload media. Please try again.';
+                    
+                    if (error instanceof Error) {
+                      console.error('Error details:', error.message);
+                      if (error.message.includes('network') || error.message.includes('Network')) {
+                        errorMessage = 'Network error. Please check your internet connection and try again.';
+                      } else if (error.message.includes('permission')) {
+                        errorMessage = 'Permission denied. Please check your app permissions.';
+                      } else if (error.message.includes('database')) {
+                        errorMessage = 'Could not save to database. Please try again later.';
+                      }
+                    }
+                    
+                    Alert.alert('Error', errorMessage);
                   } finally {
                     setIsUploading(false);
                     setUploadProgress(0);
@@ -287,6 +327,13 @@ const TimeLapseScreen: React.FC<TimeLapseScreenProps> = ({ navigation }) => {
                         likedBy: []
                       });
                       
+                      if (!newItem || !newItem.id) {
+                        console.error('Failed to create timelapse item in DynamoDB, got:', newItem);
+                        throw new Error('Failed to save media data to database');
+                      }
+                      
+                      console.log('Successfully created timelapse item with ID:', newItem.id);
+                      
                       return {
                         id: newItem.id || '',
                         userId: user?.uid || '',
@@ -304,7 +351,20 @@ const TimeLapseScreen: React.FC<TimeLapseScreenProps> = ({ navigation }) => {
                     Alert.alert('Success', 'Media uploaded successfully!');
                   } catch (error) {
                     console.error('Error uploading media:', error);
-                    Alert.alert('Error', 'Failed to upload media. Please try again.');
+                    let errorMessage = 'Failed to upload media. Please try again.';
+                    
+                    if (error instanceof Error) {
+                      console.error('Error details:', error.message);
+                      if (error.message.includes('network') || error.message.includes('Network')) {
+                        errorMessage = 'Network error. Please check your internet connection and try again.';
+                      } else if (error.message.includes('permission')) {
+                        errorMessage = 'Permission denied. Please check your app permissions.';
+                      } else if (error.message.includes('database')) {
+                        errorMessage = 'Could not save to database. Please try again later.';
+                      }
+                    }
+                    
+                    Alert.alert('Error', errorMessage);
                   } finally {
                     setIsUploading(false);
                     setUploadProgress(0);
@@ -352,6 +412,13 @@ const TimeLapseScreen: React.FC<TimeLapseScreenProps> = ({ navigation }) => {
                         likedBy: []
                       });
                       
+                      if (!newItem || !newItem.id) {
+                        console.error('Failed to create timelapse item in DynamoDB, got:', newItem);
+                        throw new Error('Failed to save media data to database');
+                      }
+                      
+                      console.log('Successfully created timelapse item with ID:', newItem.id);
+                      
                       return {
                         id: newItem.id || '',
                         userId: user?.uid || '',
@@ -369,7 +436,20 @@ const TimeLapseScreen: React.FC<TimeLapseScreenProps> = ({ navigation }) => {
                     Alert.alert('Success', 'Media uploaded successfully!');
                   } catch (error) {
                     console.error('Error uploading media:', error);
-                    Alert.alert('Error', 'Failed to upload media. Please try again.');
+                    let errorMessage = 'Failed to upload media. Please try again.';
+                    
+                    if (error instanceof Error) {
+                      console.error('Error details:', error.message);
+                      if (error.message.includes('network') || error.message.includes('Network')) {
+                        errorMessage = 'Network error. Please check your internet connection and try again.';
+                      } else if (error.message.includes('permission')) {
+                        errorMessage = 'Permission denied. Please check your app permissions.';
+                      } else if (error.message.includes('database')) {
+                        errorMessage = 'Could not save to database. Please try again later.';
+                      }
+                    }
+                    
+                    Alert.alert('Error', errorMessage);
                   } finally {
                     setIsUploading(false);
                     setUploadProgress(0);

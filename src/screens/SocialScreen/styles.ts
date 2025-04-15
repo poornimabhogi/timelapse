@@ -59,13 +59,13 @@ export const styles = StyleSheet.create({
     marginVertical: 8,
   },
   emptyStateContainer: {
-    padding: 24,
+    padding: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
   emptyStateText: {
-    fontSize:.6,
-    color: '#999',
+    fontSize: 16,
+    color: '#666',
     textAlign: 'center',
   },
   timeCapsuleList: {
@@ -193,5 +193,39 @@ export const styles = StyleSheet.create({
   actionText: {
     fontSize: 14,
     color: '#666',
+  },
+  feedList: {
+    width: '100%',
+    paddingHorizontal: 0,
+  },
+  timelapseScrollView: {
+    marginTop: 10,
+    paddingHorizontal: 10,
+  },
+  timelapseItem: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    overflow: 'hidden',
+    marginRight: 16,
+    position: 'relative',
+    borderWidth: 3,
+    borderColor: '#6B4EFF',
+  },
+  timelapseImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 37,
+  },
+  timelapseTime: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    color: '#FFFFFF',
+    fontSize: 10,
+    padding: 4,
+    textAlign: 'center',
   },
 }); 
