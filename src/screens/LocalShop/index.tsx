@@ -15,7 +15,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { useAuth } from '../../contexts/AuthContext';
-import { generateClient } from 'aws-amplify/api';
+import  awsConfig  from '../../services/aws-config';
 import BottomTabBar from '../../components/common/BottomTabBar';
 import { sendSellerVerificationEmail, saveSellerVerification } from '../../services/aws-config';
 
@@ -112,7 +112,7 @@ const LocalShop: React.FC<LocalShopProps> = ({ onChangeScreen }) => {
     businessCategory: 'General',
     publicBio: 'Welcome to my shop!'
   });
-  const client = generateClient();
+  const client = awsConfig.graphqlQuery;
   const [viewOnly, setViewOnly] = useState(false);
   
   // Mock verification data for viewing

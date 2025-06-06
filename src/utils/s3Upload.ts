@@ -1,8 +1,25 @@
-import { generateClient } from 'aws-amplify/api';
-import { getCurrentUser } from 'aws-amplify/auth';
+// Import for future component integration
+import { useAuth } from '../contexts/AuthContext';
+import awsConfig from '../services/aws-config';
 
-// Create a GraphQL client
-const client = generateClient();
+// Client instance for potential future use
+const client = awsConfig;
+// Get the current user globally to avoid repeated fetches
+let userAuthInfo: { uid: string } | null = null;
+
+// Get the current user's ID - initialize async
+const initCurrentUser = async () => {
+  try {
+    userAuthInfo = await awsConfig.getCurrentUser();
+    return userAuthInfo;
+  } catch (error) {
+    console.error('Error initializing current user:', error);
+    return null;
+  }
+};
+
+// Start the initialization process
+initCurrentUser();
 
 interface PresignedUrlResponse {
   data?: {
@@ -14,10 +31,11 @@ interface PresignedUrlResponse {
   }
 }
 
+
 // GraphQL mutation for generating presigned URL
 const generatePresignedUrlMutation = `
-  mutation GeneratePresignedUrl($fileName: String!, $fileType: String!) {
-    generatePresignedUrl(fileName: $fileName, fileType: $fileType) {
+  mutation GeneratePresignedUrl($fileName: String!, $fileType: String!, $userId: String!) {
+    generatePresignedUrl(fileName: $fileName, fileType: $fileType, userId: $userId) {
       uploadUrl
       fileUrl
       key
@@ -40,14 +58,33 @@ export const uploadToS3 = async (
     console.log('File type:', file.type);
     console.log('File URI:', file.uri.substring(0, 30) + '...');
     
-    // Get current user ID for folder structure - this is now handled in the Lambda
-    let userId = 'anonymous';
+    // Get current user ID - require authentication for production uploads
+    let userId = userAuthInfo?.uid;
     try {
-      const currentUser = await getCurrentUser();
-      userId = currentUser.userId;
-      console.log('User ID for upload:', userId);
+      // If we don't have the user yet, try to get it
+      if (!userAuthInfo) {
+        const currentUser = await awsConfig.getCurrentUser();
+        if (!currentUser || !currentUser.uid) {
+          throw new Error('Authentication required for file uploads');
+        }
+        userId = currentUser.uid;
+        console.log('User ID for upload:', userId);
+      }
+      
+      // Verify we have a valid user ID before proceeding
+      if (!userId) {
+        throw new Error('Authentication required for file uploads');
+      }
     } catch (userError) {
-      console.error('Error getting current user, using anonymous ID:', userError);
+      console.error('Authentication error:', userError);
+      // In production, we don't allow anonymous uploads
+      if (!__DEV__) {
+        throw new Error('Authentication required for file uploads');
+      } else {
+        // Only in development, fall back to a test user ID
+        console.warn('DEV MODE: Using test user ID for upload');
+        userId = 'dev-test-user';
+      }
     }
     
     // Create the file name (actual path/folder structure is handled in the Lambda)
@@ -58,13 +95,14 @@ export const uploadToS3 = async (
     console.log('Requesting presigned URL from GraphQL API');
     let response;
     try {
-      response = await client.graphql<PresignedUrlResponse>({
-        query: generatePresignedUrlMutation,
-        variables: {
+      response = await awsConfig.graphqlMutation(
+        generatePresignedUrlMutation,
+        {
           fileName: fileName,
           fileType: file.type || 'application/octet-stream',
+          userId: userId // Pass the userId parameter explicitly
         }
-      });
+      );
       console.log('Received response from GraphQL API:', JSON.stringify(response, null, 2));
     } catch (apiError: any) {
       console.error('Error getting presigned URL from API:', apiError);

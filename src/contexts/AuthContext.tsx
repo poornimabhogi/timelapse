@@ -1,13 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { Amplify } from 'aws-amplify';
-import { signIn, signUp, confirmSignUp, signOut, fetchUserAttributes, getCurrentUser, resetPassword, confirmResetPassword } from 'aws-amplify/auth';
-import { configureAmplify } from '../services/aws-config';
+import awsConfig, { confirmResetPassword, resetPassword } from '../services/aws-config';
 import { Platform, AppState, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initializeUserInDynamoDB } from '../services/dynamodbService';
 
-// Force reconfigure Amplify when context is used
-configureAmplify();
 
 interface User {
   uid: string;
@@ -95,83 +91,94 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   async function checkUser() {
     try {
-      const currentUser = await getCurrentUser();
-      const attributes = await fetchUserAttributes();
+      console.log('Starting authentication check...');
       
-      console.log('Current user:', currentUser);
-      console.log('User attributes:', attributes);
-      
-      // Ensure we have a valid username
-      let username = attributes.name || attributes.preferred_username || '';
-      if (!username && attributes.email) {
-        // Use part before @ in email if no name is provided
-        username = attributes.email.split('@')[0];
-      }
-      
-      // Ensure username is not empty
-      if (!username && currentUser.username) {
-        username = currentUser.username;
-      }
-      
-      // Default fallback
-      if (!username) {
-        username = `user_${attributes.sub?.substring(0, 8) || Date.now()}`;
-      }
-      
-      const userInfo: User = {
-        uid: attributes.sub || currentUser.userId,
-        username: username,
-        name: attributes.name,
-        bio: attributes.bio,
-        avatar: attributes.picture,
-        following: undefined, // Will be populated later after fetching from DynamoDB
-        attributes: attributes
-      };
-      
-      setUser(userInfo);
-      
-      // Initialize user in DynamoDB
-      try {
-        console.log('Initializing user in DynamoDB during checkUser:', userInfo.uid);
-        console.log('Using username:', username);
+      // Add timeout to prevent indefinite loading
+      const authCheckPromise = (async () => {
+        const currentUser = await awsConfig.getCurrentUser() as { 
+          uid: string; 
+          username: string; 
+          email: string;
+          attributes?: Record<string, any>;
+          userId?: string; 
+        };
+        const attributes = currentUser.attributes || {};
         
-        // Retry user initialization up to 3 times
-        let attempts = 0;
-        let success = false;
-        while (attempts < 3 && !success) {
-          attempts++;
+        console.log('Current user:', currentUser);
+        console.log('User attributes:', attributes);
+        
+        // Ensure we have a valid username
+        let username = attributes.name || attributes.preferred_username || '';
+        if (!username && attributes.email) {
+          // Use part before @ in email if no name is provided
+          username = attributes.email.split('@')[0];
+        }
+        
+        // Ensure username is not empty
+        if (!username && currentUser.username) {
+          username = currentUser.username;
+        }
+        
+        // Default fallback
+        if (!username) {
+          username = `user_${attributes.sub?.substring(0, 8) || Date.now()}`;
+        }
+        
+        const userInfo: User = {
+          uid: attributes.sub || currentUser.uid,
+          username: username,
+          name: attributes.name,
+          bio: attributes.bio,
+          avatar: attributes.picture,
+          following: undefined, // Will be populated later after fetching from DynamoDB
+          attributes: attributes
+        };
+        
+        setUser(userInfo);
+        
+        // Initialize user in DynamoDB with timeout
+        try {
+          console.log('Initializing user in DynamoDB during checkUser:', userInfo.uid);
+          console.log('Using username:', username);
+          
+          // Use Promise.race with timeout to avoid hanging
+          const dbInitPromise = initializeUserInDynamoDB(
+            userInfo.uid,
+            username,
+            attributes.email || ''
+          );
+          
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('DynamoDB initialization timeout')), 5000)
+          );
+          
           try {
-            const result = await initializeUserInDynamoDB(
-              userInfo.uid,
-              username,
-              attributes.email || ''
-            );
-            if (result) {
-              console.log(`User initialized successfully on attempt ${attempts}:`, result);
-              success = true;
-            } else {
-              console.log(`User initialization returned null on attempt ${attempts}`);
-              // Wait a short time before retrying
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-          } catch (attemptError) {
-            console.error(`Error on initialization attempt ${attempts}:`, attemptError);
-            // Wait longer between retries
-            await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+            const result = await Promise.race([dbInitPromise, timeoutPromise]);
+            console.log('DynamoDB initialization completed:', result);
+          } catch (timeoutError) {
+            console.warn('DynamoDB initialization timed out or failed, continuing with app flow:', timeoutError);
+            // Continue anyway - this shouldn't block the user
           }
+        } catch (dbError) {
+          console.error('Error initializing user in DynamoDB during checkUser:', dbError);
+          // Continue anyway, as this shouldn't prevent app usage
         }
         
-        if (!success) {
-          console.warn('Failed to initialize user after multiple attempts, but continuing app flow');
-        }
-      } catch (dbError) {
-        console.error('Error initializing user in DynamoDB during checkUser:', dbError);
-        // Continue anyway, as this shouldn't prevent app usage
-      }
+        return userInfo;
+      })();
+      
+      // Overall timeout for the entire auth check
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Authentication check timeout')), 10000)
+      );
+      
+      await Promise.race([authCheckPromise, timeoutPromise]);
+      
     } catch (error) {
-      console.log('User not authenticated', error);
+      console.log('User not authenticated or auth check failed:', error);
       setUser(null);
     } finally {
+      console.log('Authentication check completed, setting loading to false');
       setLoading(false);
     }
   }
@@ -179,12 +186,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Sign in with username and password
   async function handleSignIn(username: string, password: string) {
     try {
-      const { isSignedIn } = await signIn({ username, password });
+      const result = await awsConfig.signIn(username, password);
       
-      if (isSignedIn) {
+      if (result.isSignedIn) {
         // Fetch user attributes after successful sign in
-        const currentUser = await getCurrentUser();
-        const attributes = await fetchUserAttributes();
+        const currentUser = await awsConfig.getCurrentUser() as { 
+          uid: string; 
+          username: string; 
+          email: string;
+          attributes?: Record<string, any>;
+          userId?: string; 
+        };
+        const attributes = currentUser.attributes || {};
         
         // Ensure we have a valid username
         let displayUsername = attributes.name || attributes.preferred_username || '';
@@ -243,18 +256,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('Starting sign up process for:', username);
       
       // Use email as username for Cognito since it's configured to expect email addresses
-      const result = await signUp({
-        username: email,
-        password: password,
-        options: {
-          userAttributes: {
-            email: email,
-            name: username,
-            // Add preferred_username attribute to ensure username is saved in Cognito
-            preferred_username: username,
-          },
-        },
-      });
+      const result = await awsConfig.signUp(username, password, email);
       
       console.log('Sign up successful:', result);
       return result;
@@ -277,9 +279,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   async function handleConfirmSignUp(username: string, code: string) {
     try {
       // In our Cognito setup, the actual username is the email
-      const result = await confirmSignUp({ username, confirmationCode: code });
+      const result = await awsConfig.confirmSignUp(username, code);
       
-      if (result.isSignUpComplete) {
+      // Always proceed with initialization if we get a result
+      if (result) {
         // Try to auto sign in if confirmation is successful
         try {
           // We'd need the password here, but we don't have it at this point
@@ -322,7 +325,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         try {
           // 1. Call AWS Amplify signOut
-          await signOut();
+          await awsConfig.signOut();
         } catch (signOutError) {
           console.log('Error during signOut, continuing with forced logout:', signOutError);
         }
@@ -374,7 +377,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         // iOS handling (already working)
         try {
-          await signOut();
+          await awsConfig.signOut();
         } catch (error) {
           console.log('Error signing out on iOS, forcing logout anyway:', error);
         }
@@ -404,7 +407,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Reset password
   async function handleResetPassword(username: string) {
     try {
-      return await resetPassword({ username });
+      return await resetPassword(username);
     } catch (error) {
       console.log('Error resetting password', error);
       throw error;
@@ -414,11 +417,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Confirm reset password with code
   async function handleConfirmResetPassword(username: string, code: string, newPassword: string) {
     try {
-      return await confirmResetPassword({
-        username,
-        confirmationCode: code,
-        newPassword
-      });
+      return await confirmResetPassword(username, code, newPassword);
     } catch (error) {
       console.log('Error confirming reset password', error);
       throw error;

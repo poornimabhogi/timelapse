@@ -1,4 +1,4 @@
-import { generateClient } from 'aws-amplify/api';
+import awsConfig from '../services/aws-config';
 
 export const listTimelapses = /* GraphQL */ `
   query ListTimelapses($limit: Int) {

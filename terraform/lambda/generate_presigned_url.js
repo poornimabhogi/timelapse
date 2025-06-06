@@ -9,7 +9,24 @@ exports.handler = async (event) => {
     
     // Extract parameters from the GraphQL event
     const { fileName, fileType } = event.arguments;
-    const userId = event.identity.sub;
+    // Old version
+    //const userId = event.identity.sub;
+
+       // New version - more robust
+     let userId;
+     if (event.arguments.userId) {
+       // Get from direct arguments when passed from client
+       userId = event.arguments.userId;
+     } else if (event.identity && event.identity.sub) {
+       // Or from Cognito identity when authenticated through AppSync
+     userId = event.identity.sub;
+     } else {
+      // Fallback to anonymous if no user ID available
+      userId = 'anonymous';
+     }
+
+     // Logging for debugging
+     console.log('Using userId for upload:', userId);
     
     // Generate a unique key for the file with user ID
     const timestamp = new Date().getTime();

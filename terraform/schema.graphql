@@ -76,6 +76,32 @@ type Query {
   getFollowing(userId: ID!): [User]
   listFollowedPosts(userId: ID!, limit: Int, nextToken: String): [Post]
   listTimelapseItems(userId: ID, limit: Int, nextToken: String): TimelapseItemConnection
+
+  # Seller verification queries
+  getSellerVerification(userId: ID!): SellerVerification
+  listSellerVerifications(status: String, limit: Int, nextToken: String): SellerVerificationConnection
+  
+  # Bulk user operations
+  getUsersByIds(ids: [ID!]!): [User]
+  getUserActivities(userId: ID!, limit: Int, nextToken: String): ActivityConnection
+  searchUsers(query: String!, limit: Int): [User]
+  
+  # Bulk data operations
+  getTimelapsesByIds(ids: [ID!]!): [TimelapseItem]
+  bulkGetInteractions(postIds: [ID!]!, type: String): [Interaction]
+  getMultipleUserTimelapses(userIds: [ID!]!, limit: Int): [UserTimelapseResult]
+}
+
+type ActivityConnection {
+  items: [Activity]
+  nextToken: String
+}
+
+type Activity {
+  id: ID!
+  type: String!
+  timestamp: String!
+  data: AWSJSON
 }
 
 type TimelapseItemConnection {
@@ -107,10 +133,24 @@ type Mutation {
   viewTimelapse(id: ID!): Timelapse
   
   # Generate a presigned URL for S3 uploads
-  generatePresignedUrl(fileName: String!, fileType: String!): PresignedUrlResponse
+  generatePresignedUrl(fileName: String!, fileType: String!, userId: String): PresignedUrlResponse
   createTimelapseItem(input: CreateTimelapseItemInput!): TimelapseItem
   updateTimelapseItem(input: UpdateTimelapseItemInput!): TimelapseItem
   deleteTimelapseItem(input: DeleteTimelapseItemInput!): TimelapseItem
+  
+  # Seller verification operations
+  saveSellerVerification(input: SaveSellerVerificationInput!): SellerVerification
+  sendSellerVerificationEmail(
+    businessName: String!, 
+    businessEmail: String!, 
+    userId: String!, 
+    verificationDetails: AWSJSON!
+  ): SellerVerificationEmailResponse
+  
+  # Batch operations
+  batchUpdateLikes(inputs: [BatchLikeInput!]!): BatchOperationResult
+  batchCreateComments(inputs: [CommentInput!]!): BatchCommentResult
+  batchIncrementViews(targetIds: [ID!]!): BatchOperationResult
 }
 
 # Response type for presigned URL generation
@@ -142,12 +182,118 @@ input DeleteTimelapseItemInput {
   id: ID!
 }
 
+input BatchLikeInput {
+  targetId: ID!
+  userIds: [ID!]!
+}
+
+input CommentInput {
+  targetId: ID!
+  userId: ID!
+  content: String!
+}
+
+type UserTimelapseResult {
+  userId: ID!
+  timelapseIds: [ID!]!
+}
+
+type Interaction {
+  id: ID!
+  userId: ID!
+  targetId: ID!
+  type: String!
+  content: String
+  createdAt: AWSTimestamp!
+}
+
+type BatchOperationResult {
+  successCount: Int!
+  failedIds: [ID!]
+}
+
+type BatchCommentResult {
+  successCount: Int!
+  failedComments: [CommentFailure!]
+}
+
+type CommentFailure {
+  targetId: ID!
+  userId: ID!
+  reason: String
+}
+
 extend type Subscription {
   onCreateTimelapseItem(userId: ID): TimelapseItem
     @aws_subscribe(mutations: ["createTimelapseItem"])
+  
+  # Add missing subscriptions for timelapses
+  onUpdateTimelapseItem(id: ID): TimelapseItem
+    @aws_subscribe(mutations: ["updateTimelapseItem"])
+  
+  onDeleteTimelapseItem(id: ID): TimelapseItem
+    @aws_subscribe(mutations: ["deleteTimelapseItem"])
+  
+  # For social features
+  onCreateComment(postId: ID): Comment
+    @aws_subscribe(mutations: ["createComment"])
+  
+  onLikeTimelapse(id: ID): Timelapse
+    @aws_subscribe(mutations: ["likeTimelapse"])
+    
+  onCreatePost(authorId: ID): Post
+    @aws_subscribe(mutations: ["createPost"])
+    
+  # For seller verification
+  onUpdateSellerVerification(userId: ID): SellerVerification
+    @aws_subscribe(mutations: ["saveSellerVerification"])
 }
 
+# Update schema definition to include Subscription
 schema {
   query: Query
   mutation: Mutation
-} 
+  subscription: Subscription
+}
+
+# Add SellerVerification type
+type SellerVerification {
+  id: ID!
+  userId: ID!
+  businessName: String!
+  businessType: String!
+  taxId: String!
+  businessAddress: AWSJSON!
+  contactInfo: AWSJSON!
+  businessDescription: String!
+  categories: [String!]!
+  status: String!  # "pending", "approved", "rejected"
+  reviewNotes: String
+  createdAt: String!
+  updatedAt: String
+}
+
+# Add SellerVerificationEmail response type
+type SellerVerificationEmailResponse {
+  success: Boolean!
+  messageId: String
+}
+
+# Add input type for seller verification
+input SaveSellerVerificationInput {
+  userId: ID!
+  businessName: String!
+  businessType: String!
+  taxId: String!
+  businessAddress: AWSJSON!
+  contactInfo: AWSJSON!
+  businessDescription: String!
+  categories: [String!]!
+  status: String!
+}
+
+# Add connection type for pagination
+type SellerVerificationConnection {
+  items: [SellerVerification]
+  nextToken: String
+}

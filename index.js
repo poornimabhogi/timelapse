@@ -2,21 +2,21 @@
  * @format
  */
 
-// This import MUST be first before any AWS Amplify related code
-import 'react-native-get-random-values';
+import 'react-native-get-random-values'; // required for crypto support
+import 'react-native-url-polyfill/auto'; // required for URL and fetch in AWS SDK
+import { Buffer } from 'buffer';
+import process from 'process';
+import { decode as atob, encode as btoa } from 'base-64';
 
-import {AppRegistry} from 'react-native';
+// Set up global polyfills for AWS SDK v3
+global.Buffer = Buffer;
+global.process = process;
+
+if (!global.btoa) global.btoa = btoa;
+if (!global.atob) global.atob = atob;
+
+import { AppRegistry } from 'react-native';
 import App from './App';
-import {name as appName} from './app.json';
-import { configureAmplify } from './src/services/aws-config';
-
-// Initialize AWS Amplify at the app entry point with error handling
-try {
-  console.log('Initializing Amplify from index.js');
-  configureAmplify();
-  console.log('Amplify initialization complete in index.js');
-} catch (error) {
-  console.error('Failed to initialize Amplify in index.js:', error);
-}
+import { name as appName } from './app.json';
 
 AppRegistry.registerComponent(appName, () => App);

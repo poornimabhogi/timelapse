@@ -57,15 +57,24 @@ resource "aws_iam_policy" "lambda_policy" {
           "${aws_s3_bucket.media_bucket.arn}/*"
         ]
       },
-      # DynamoDB permissions
+      
+    ]
+  })
+}
+resource "aws_iam_role_policy" "lambda_dynamodb_policy" {
+  name   = "lambda-dynamo-access"
+  role   = aws_iam_role.lambda_exec_role.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
       {
+        Effect = "Allow",
         Action = [
           "dynamodb:GetItem",
           "dynamodb:PutItem",
           "dynamodb:UpdateItem",
           "dynamodb:Query"
-        ]
-        Effect = "Allow"
+        ],
         Resource = [
           aws_dynamodb_table.users_table.arn,
           aws_dynamodb_table.posts_table.arn,
@@ -178,12 +187,12 @@ resource "aws_cloudwatch_metric_alarm" "lambda_error_alarm" {
 
   alarm_name          = "${aws_lambda_function.media_processor.function_name}-errors"
   comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "1"
+  evaluation_periods  = 1
   metric_name         = "Errors"
   namespace           = "AWS/Lambda"
-  period              = "60"
+  period              = 60
   statistic           = "Sum"
-  threshold           = "0"
+  threshold           = 0
   alarm_description   = "This metric monitors lambda errors"
 
   dimensions = {

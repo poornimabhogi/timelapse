@@ -10,11 +10,9 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
-import { logError } from '../utils/errorHandler';
 import { getMediaUrl, likeTimelapseItem, unlikeTimelapseItem } from '../services/aws-config';
 import VideoPlayer from './VideoPlayer';
-
-const { width, height } = Dimensions.get('window');
+import { logError } from '../utils/errorHandler';
 
 interface TimelapseViewerProps {
   visible: boolean;
@@ -34,7 +32,7 @@ interface TimelapseViewerProps {
   onLikeUpdated?: (timelapseId: string, newLikeCount: number, userLiked: boolean) => void;
 }
 
-const SimpleTimelapseViewer: React.FC<TimelapseViewerProps> = ({
+export const TimelapseViewer: React.FC<TimelapseViewerProps> = ({
   visible,
   timelapse,
   onClose,
@@ -76,7 +74,7 @@ const SimpleTimelapseViewer: React.FC<TimelapseViewerProps> = ({
         }
         setLikeCount(timelapse.likes || 0);
       } catch (error) {
-        logError(error, 'SimpleTimelapseViewer.loadMedia');
+        logError(error, 'TimelapseViewer.loadMedia');
       } finally {
         setIsLoadingMedia(false);
       }
@@ -114,7 +112,7 @@ const SimpleTimelapseViewer: React.FC<TimelapseViewerProps> = ({
       // Revert on error
       setIsLiked(!isLiked);
       setLikeCount(isLiked ? likeCount - 1 : likeCount + 1);
-      logError(error, 'SimpleTimelapseViewer.handleLike');
+      logError(error, 'TimelapseViewer.handleLike');
     } finally {
       setIsLoading(false);
     }
@@ -260,8 +258,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   mediaContainer: {
-    width: width,
-    height: width,
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').width,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#000000',
@@ -321,4 +319,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export default SimpleTimelapseViewer; 
+// Also export as default for backward compatibility
+export default TimelapseViewer; 

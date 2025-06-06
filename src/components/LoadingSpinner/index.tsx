@@ -1,10 +1,21 @@
 import React from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
 
-export const LoadingSpinner: React.FC = () => {
+interface LoadingSpinnerProps {
+  size?: 'large' | 'small';
+  color?: string;
+  message?: string;
+}
+
+export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({ 
+  size = 'large', 
+  color = '#6B4EFF',
+  message
+}) => {
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color="#6B4EFF" />
+      <ActivityIndicator size={size} color={color} />
+      {message && <Text style={styles.message}>{message}</Text>}
     </View>
   );
 };
@@ -14,6 +25,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF'
   },
+  message: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#666666',
+    textAlign: 'center'
+  }
 }); 

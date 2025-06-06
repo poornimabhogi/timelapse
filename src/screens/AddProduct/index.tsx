@@ -13,7 +13,6 @@ import {
   StatusBar,
 } from 'react-native';
 import { useAuth } from '../../contexts/AuthContext';
-import { generateClient } from 'aws-amplify/api';
 import BottomTabBar from '../../components/common/BottomTabBar';
 
 interface ProductFormData {
@@ -38,7 +37,6 @@ const AddProduct: React.FC<AddProductProps> = ({ onChangeScreen }) => {
     images: [],
   });
   const [loading, setLoading] = useState(false);
-  const client = generateClient();
 
   const pickImage = async () => {
     try {

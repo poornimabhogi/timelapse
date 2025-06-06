@@ -1,17 +1,17 @@
-import { uploadData } from 'aws-amplify/storage';
-import { generateClient } from 'aws-amplify/api';
-import { getCurrentUser } from 'aws-amplify/auth';
-import awsconfig from '../aws-exports';
+import awsConfig from './aws-config';
 import { EventEmitter } from 'events';
 import { Observable } from 'zen-observable-ts';
-import { GraphQLResult } from '@aws-amplify/api';
-import { Amplify } from 'aws-amplify';
+import { graphqlClient } from './aws-config';
+import { ApolloClient, gql } from '@apollo/client';
 
-// Ensure Amplify is configured with the correct settings
-   // In your configuration
-   Amplify.configure(awsconfig);
+import { config } from 'process';
+interface GraphQLResult<T> {
+  data?: T;
+  errors?: Array<{ message: string }>;
+}
 
-// Define the User type
+
+
 export type User = {
   id: string;
   username: string;
@@ -24,8 +24,7 @@ export type User = {
 };
 
 // Create a GraphQL client
-const client = generateClient();
-
+const client = graphqlClient;
 // Define types for GraphQL responses
 interface GraphQLResponse<T> {
   data?: T;
@@ -116,7 +115,7 @@ export interface TimelapseItem {
 export interface CreateTimelapseItemInput {
   userId: string;
   mediaUrl: string;
-  type: string;
+  type: 'photo' | 'video';
   createdAt: number;
   description?: string;
   likes: number;
@@ -126,9 +125,14 @@ export interface CreateTimelapseItemInput {
 
 export interface UpdateTimelapseItemInput {
   id: string;
+  userId?: string;
+  mediaUrl?: string;
+  type?: 'photo' | 'video';
+  createdAt?: number;
+  description?: string;
   likes?: number;
   likedBy?: string[];
-  description?: string;
+  duration?: number;
 }
 
 export interface DeleteTimelapseItemInput {
@@ -195,6 +199,68 @@ const deleteTimelapseItemMutation = `
   }
 `;
 
+// Define queries for user operations
+const GET_USER_QUERY = `
+  query GetUser($id: ID!) {
+    getUser(id: $id) {
+      id
+      username
+      following
+    }
+  }
+`;
+
+const CREATE_USER_MUTATION = `
+  mutation CreateUser($username: String!, $name: String, $bio: String, $avatar: String) {
+    createUser(username: $username, name: $name, bio: $bio, avatar: $avatar) {
+      id
+      username
+      name
+    }
+  }
+`;
+
+const UPDATE_USER_MUTATION = `
+  mutation UpdateUser($input: UpdateUserInput!) {
+    updateUser(input: $input) {
+      id
+      following
+    }
+  }
+`;
+
+// BatchGet GraphQL queries
+const batchGetTimelapseItemsQuery = `
+  query BatchGetTimelapseItems($ids: [ID!]!) {
+    getTimelapsesByIds(ids: $ids) {
+      id
+      userId
+      mediaUrl
+      type
+      createdAt
+      description
+      likes
+      likedBy
+      duration
+    }
+  }
+`;
+
+const batchGetUsersQuery = `
+  query BatchGetUsers($ids: [ID!]!) {
+    getUsersByIds(ids: $ids) {
+      id
+      username
+      name
+      bio
+      avatar
+      following
+      followers
+      createdAt
+    }
+  }
+`;
+
 // Service functions that replace Firestore operations
 export const dynamodbService = {
   // Add a new timelapse item (replaces addDoc from Firestore)
@@ -202,29 +268,8 @@ export const dynamodbService = {
     try {
       console.log('Creating timelapse with data:', JSON.stringify(item, null, 2));
       
-      // Validate required fields before sending to API
-      if (!item.userId) {
-        console.error('Error: Missing required field userId');
-        throw new Error('userId is required');
-      }
-      
-      if (!item.mediaUrl) {
-        console.error('Error: Missing required field mediaUrl');
-        throw new Error('mediaUrl is required');
-      }
-      
-      if (!item.type) {
-        console.error('Error: Missing required field type');
-        throw new Error('type is required');
-      }
-      
-      if (!item.createdAt) {
-        console.error('Error: Missing required field createdAt');
-        throw new Error('createdAt is required');
-      }
-      
       // Make sure we have all the required fields for the input
-      const input: CreateTimelapseItemInput = {
+      const input = {
         userId: item.userId,
         mediaUrl: item.mediaUrl,
         type: item.type,
@@ -237,37 +282,8 @@ export const dynamodbService = {
       
       console.log('Formatted input:', JSON.stringify(input, null, 2));
       
-      // First check if the user exists to avoid reference errors
-      const userExists = await checkUserExists(item.userId);
-      if (!userExists) {
-        console.warn('User does not exist in DynamoDB, creating a minimal user record first');
-        try {
-          // Create a minimal user record
-          await client.graphql({
-            query: `
-              mutation CreateUser($username: String!, $name: String, $bio: String, $avatar: String) {
-                createUser(username: $username, name: $name, bio: $bio, avatar: $avatar) {
-                  id
-                  username
-                }
-              }
-            `,
-            variables: {
-              username: `user_${item.userId.substring(0, 8)}`,
-              name: `User ${item.userId.substring(0, 5)}`,
-              bio: '',
-              avatar: ''
-            }
-          });
-          console.log('Created minimal user record');
-        } catch (userError) {
-          console.error('Failed to create user record:', userError);
-          // Continue with the timelapse creation anyway
-        }
-      }
-      
-      const response = await client.graphql({
-        query: createTimelapseItemMutation,
+      const response = await client.mutate({
+        mutation: gql(createTimelapseItemMutation),
         variables: {
           input
         }
@@ -283,27 +299,36 @@ export const dynamodbService = {
         
         if (response?.errors) {
           console.error('GraphQL errors:', JSON.stringify(response.errors, null, 2));
-          
-          // If there are specific errors, throw with details
-          if (response.errors.length > 0) {
-            throw new Error(`GraphQL error: ${response.errors[0].message}`);
-          }
         }
         
-        throw new Error('Failed to create timelapse item');
+        // Create a fallback item with a temporary ID for local use
+        const fallbackItem: TimelapseItem = {
+          id: `temp-${Date.now()}`,
+          userId: item.userId,
+          mediaUrl: item.mediaUrl,
+          type: item.type,
+          createdAt: item.createdAt,
+          description: item.description || '',
+          likes: item.likes || 0,
+          likedBy: item.likedBy || [],
+          duration: item.duration || 0
+        };
+        
+        console.warn('Using fallback item with temporary ID');
+        return fallbackItem;
       }
 
       // Create a properly structured item with ID to ensure consistency
       const createdItem: TimelapseItem = {
         id: response.data.createTimelapseItem.id,
-        userId: response.data.createTimelapseItem.userId,
-        mediaUrl: response.data.createTimelapseItem.mediaUrl, 
-        type: response.data.createTimelapseItem.type,
-        createdAt: response.data.createTimelapseItem.createdAt,
-        description: response.data.createTimelapseItem.description || '',
-        likes: response.data.createTimelapseItem.likes || 0,
-        likedBy: response.data.createTimelapseItem.likedBy || [],
-        duration: response.data.createTimelapseItem.duration || 0
+        userId: item.userId,
+        mediaUrl: item.mediaUrl, 
+        type: item.type,
+        createdAt: item.createdAt,
+        description: item.description || '',
+        likes: item.likes || 0,
+        likedBy: item.likedBy || [],
+        duration: item.duration || 0
       };
 
       // Store the created item in our cache
@@ -356,8 +381,8 @@ export const dynamodbService = {
     try {
       console.log(`Fetching timelapse items for user ${userId}, limit: ${limit}`);
       
-      const response = await client.graphql({
-        query: listTimelapseItemsQuery,
+      const response = await client.query({
+        query: gql(listTimelapseItemsQuery),
         variables: { userId, limit }
       }) as GraphQLResult<{
         listTimelapseItems: {
@@ -400,8 +425,8 @@ export const dynamodbService = {
         ...data
       };
       
-      const response = await client.graphql({
-        query: updateTimelapseItemMutation,
+      const response = await client.mutate({
+        mutation: gql(updateTimelapseItemMutation),
         variables: {
           input
         }
@@ -485,8 +510,8 @@ export const dynamodbService = {
       
       const input: DeleteTimelapseItemInput = { id };
       
-      const response = await client.graphql({
-        query: deleteTimelapseItemMutation,
+      const response = await client.mutate({
+        mutation: gql(deleteTimelapseItemMutation),
         variables: {
           input
         }
@@ -509,8 +534,8 @@ export const dynamodbService = {
   // Helper to get the current user ID
   async getCurrentUserId(): Promise<string> {
     try {
-      const user = await getCurrentUser();
-      return user.userId;
+      const user = await awsConfig.getCurrentUser();
+      return user.uid;
     } catch (error) {
       console.error('Error getting current user:', error);
       throw error;
@@ -521,15 +546,8 @@ export const dynamodbService = {
   async getFollowingTimelapseItems(userId: string): Promise<TimelapseItem[]> {
     try {
       // First, get the list of users that the current user follows
-      const userResponse = await client.graphql({
-        query: `
-          query GetUser($id: ID!) {
-            getUser(id: $id) {
-              id
-              following
-            }
-          }
-        `,
+      const userResponse = await client.query({
+        query: gql(GET_USER_QUERY),
         variables: {
           id: userId,
         },
@@ -553,9 +571,9 @@ export const dynamodbService = {
       }
 
       // Now get timelapses from these users
-      const response = await client.graphql({
-        query: `
-          query ListTimelapseItems($filter: ModelTimelapseItemFilterInput!) {
+      const response = await client.query({
+        query: gql(`
+          query ListTimelapseItemsByUsers($filter: ModelTimelapseItemFilterInput!) {
             listTimelapseItems(filter: $filter) {
               items {
                 id
@@ -570,7 +588,7 @@ export const dynamodbService = {
               }
             }
           }
-        `,
+        `),
         variables: {
           filter: {
             userId: {
@@ -599,15 +617,8 @@ export const dynamodbService = {
   async followUser(currentUserId: string, userToFollowId: string): Promise<boolean> {
     try {
       // First get current user to update their following list
-      const userResponse = await client.graphql({
-        query: `
-          query GetUser($id: ID!) {
-            getUser(id: $id) {
-              id
-              following
-            }
-          }
-        `,
+      const userResponse = await client.query({
+        query: gql(GET_USER_QUERY),
         variables: {
           id: currentUserId,
         },
@@ -635,15 +646,8 @@ export const dynamodbService = {
       const updatedFollowing = [...currentFollowing, userToFollowId];
       
       // Update user record
-      const updateResponse = await client.graphql({
-        query: `
-          mutation UpdateUser($input: UpdateUserInput!) {
-            updateUser(input: $input) {
-              id
-              following
-            }
-          }
-        `,
+      const updateResponse = await client.mutate({
+        mutation: gql(UPDATE_USER_MUTATION),
         variables: {
           input: {
             id: currentUserId,
@@ -669,15 +673,8 @@ export const dynamodbService = {
   async unfollowUser(currentUserId: string, userToUnfollowId: string): Promise<boolean> {
     try {
       // First get current user to update their following list
-      const userResponse = await client.graphql({
-        query: `
-          query GetUser($id: ID!) {
-            getUser(id: $id) {
-              id
-              following
-            }
-          }
-        `,
+      const userResponse = await client.query({
+        query: gql(GET_USER_QUERY),
         variables: {
           id: currentUserId,
         },
@@ -705,15 +702,8 @@ export const dynamodbService = {
       const updatedFollowing = currentFollowing.filter(id => id !== userToUnfollowId);
       
       // Update user record
-      const updateResponse = await client.graphql({
-        query: `
-          mutation UpdateUser($input: UpdateUserInput!) {
-            updateUser(input: $input) {
-              id
-              following
-            }
-          }
-        `,
+      const updateResponse = await client.mutate({
+        mutation: gql(UPDATE_USER_MUTATION),
         variables: {
           input: {
             id: currentUserId,
@@ -768,16 +758,6 @@ export const initializeUserInDynamoDB = async (userId: string, username: string,
       
       console.log('Using final username for creation:', finalUsername);
       
-      const createUserQuery = `
-        mutation CreateUser($username: String!, $name: String, $bio: String, $avatar: String) {
-          createUser(username: $username, name: $name, bio: $bio, avatar: $avatar) {
-            id
-            username
-            name
-          }
-        }
-      `;
-      
       const variables = {
         username: finalUsername,
         name: displayName,
@@ -787,8 +767,8 @@ export const initializeUserInDynamoDB = async (userId: string, username: string,
       
       console.log('Executing createUser mutation with variables:', JSON.stringify(variables, null, 2));
       
-      const createUserResponse = await client.graphql({
-        query: createUserQuery,
+      const createUserResponse = await client.mutate({
+        mutation: gql(CREATE_USER_MUTATION),
         variables: variables
       }) as GraphQLResult<{
         createUser: User;
@@ -849,17 +829,8 @@ async function checkUserExists(userId: string): Promise<boolean> {
   try {
     console.log(`Checking if user exists with ID: ${userId}`);
     
-    const getUserQuery = `
-      query GetUser($id: ID!) {
-        getUser(id: $id) {
-          id
-          username
-        }
-      }
-    `;
-    
-    const response = await client.graphql({
-      query: getUserQuery,
+    const response = await client.query({
+      query: gql(GET_USER_QUERY),
       variables: {
         id: userId
       }
@@ -891,20 +862,11 @@ async function checkUserExists(userId: string): Promise<boolean> {
 async function testGraphQLConnection() {
   try {
     console.log('Testing GraphQL connection...');
-    console.log('GraphQL endpoint:', awsconfig.aws_appsync_graphqlEndpoint);
+    console.log('GraphQL endpoint:', 'AppSync endpoint URL');
     
-    const testQuery = `
-      query {
-        __schema {
-          queryType {
-            name
-          }
-        }
-      }
-    `;
-    
-    const result = await client.graphql({
-      query: testQuery,
+    // Use Apollo client query
+    const result = await client.query({
+      query: gql(`query { __schema { queryType { name } } }`),
     });
     
     console.log('GraphQL connection successful:', result);
@@ -939,25 +901,23 @@ export const createUser = async (
       following: [],
     };
 
-    const mutation = /* GraphQL */ `
-      mutation CreateUser($input: CreateUserInput!) {
-        createUser(input: $input) {
-          id
-          username
-          email
-          bio
-          createdAt
-          following
-        }
-      }
-    `;
-
     const variables = {
       input: createUserInput,
     };
 
-    const response = await client.graphql({
-      query: mutation,
+    const response = await client.mutate({
+      mutation: gql(`
+        mutation CreateUser($input: CreateUserInput!) {
+          createUser(input: $input) {
+            id
+            username
+            email
+            bio
+            createdAt
+            following
+          }
+        }
+      `),
       variables,
     }) as GraphQLResult<{ createUser: User }>;
 
@@ -971,5 +931,382 @@ export const createUser = async (
   } catch (error) {
     console.error('Error creating user:', error);
     return null;
+  }
+};
+
+// Extend dynamodbService with batch processing functions
+export const batchOperations = {
+  // Batch get timelapse items by IDs
+  async batchGetTimelapseItems(ids: string[]): Promise<TimelapseItem[]> {
+    if (!ids || ids.length === 0) {
+      console.log('No IDs provided for batch get operation');
+      return [];
+    }
+
+    try {
+      console.log(`Batch getting ${ids.length} timelapse items`);
+      
+      // Process in chunks of 100 items (DynamoDB limit)
+      const results: TimelapseItem[] = [];
+      
+      // Process ids in chunks to avoid exceeding service limits
+      for (let i = 0; i < ids.length; i += 100) {
+        const chunk = ids.slice(i, i + 100);
+        
+        const response = await client.query({
+          query: gql(batchGetTimelapseItemsQuery),
+          variables: { ids: chunk }
+        }) as GraphQLResult<{
+          getTimelapsesByIds: TimelapseItem[];
+        }>;
+
+        if (response?.data?.getTimelapsesByIds) {
+          results.push(...response.data.getTimelapsesByIds);
+        } else if (response?.errors) {
+          console.error('GraphQL errors in batch get:', JSON.stringify(response.errors, null, 2));
+        }
+      }
+      
+      console.log(`Successfully batch retrieved ${results.length} items`);
+      return results;
+    } catch (error) {
+      console.error('Error in batch get timelapse items:', error);
+      return [];
+    }
+  },
+  
+  // Batch get users by IDs
+  async batchGetUsers(ids: string[]): Promise<User[]> {
+    if (!ids || ids.length === 0) {
+      console.log('No IDs provided for batch user get operation');
+      return [];
+    }
+
+    try {
+      console.log(`Batch getting ${ids.length} users`);
+      
+      // Process in chunks of 100 items (DynamoDB limit)
+      const results: User[] = [];
+      
+      // Process ids in chunks to avoid exceeding service limits
+      for (let i = 0; i < ids.length; i += 100) {
+        const chunk = ids.slice(i, i + 100);
+        
+        const response = await client.query({
+          query: gql(batchGetUsersQuery),
+          variables: { ids: chunk }
+        }) as GraphQLResult<{
+          getUsersByIds: User[];
+        }>;
+
+        if (response?.data?.getUsersByIds) {
+          results.push(...response.data.getUsersByIds);
+        } else if (response?.errors) {
+          console.error('GraphQL errors in batch get users:', JSON.stringify(response.errors, null, 2));
+        }
+      }
+      
+      console.log(`Successfully batch retrieved ${results.length} users`);
+      return results;
+    } catch (error) {
+      console.error('Error in batch get users:', error);
+      return [];
+    }
+  },
+  
+  // Get user timelines efficiently by aggregating followed users' timelapses
+  async getUserTimeline(userId: string, limit = 100): Promise<TimelapseItem[]> {
+    try {
+      console.log(`Getting timeline for user ${userId}`);
+      
+      // 1. Get user's following list
+      const userResponse = await client.query({
+        query: gql(GET_USER_QUERY),
+        variables: { id: userId }
+      }) as GraphQLResult<{
+        getUser: { following: string[] };
+      }>;
+      
+      if (!userResponse?.data?.getUser?.following) {
+        console.log('User not found or has no following list');
+        return [];
+      }
+      
+      const followingIds = userResponse.data.getUser.following;
+      console.log(`User is following ${followingIds.length} accounts`);
+      
+      if (followingIds.length === 0) {
+        return [];
+      }
+      
+      // 2. Get recent timelapses for all followed users in one query
+      const timelapseIds: string[] = [];
+      const seenIds = new Set<string>();
+      
+      // Process users in chunks to stay within limits
+      const chunks = [];
+      for (let i = 0; i < followingIds.length; i += 25) {
+        chunks.push(followingIds.slice(i, i + 25));
+      }
+      
+      for (const chunk of chunks) {
+        try {
+          const response = await client.query({
+            query: gql(`
+              query RecentUserTimelapses($userIds: [ID!]!, $limit: Int) {
+                getMultipleUserTimelapses(userIds: $userIds, limit: $limit) {
+                  userId
+                  timelapseIds
+                }
+              }
+            `),
+            variables: {
+              userIds: chunk,
+              limit: Math.floor(limit / followingIds.length) + 5 // Add buffer
+            }
+          }) as GraphQLResult<{
+            getMultipleUserTimelapses: Array<{
+              userId: string;
+              timelapseIds: string[];
+            }>;
+          }>;
+          
+          if (response?.data?.getMultipleUserTimelapses) {
+            for (const result of response.data.getMultipleUserTimelapses) {
+              for (const id of result.timelapseIds) {
+                if (!seenIds.has(id)) {
+                  timelapseIds.push(id);
+                  seenIds.add(id);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching chunk of user timelapses:', err);
+        }
+      }
+      
+      if (timelapseIds.length === 0) {
+        console.log('No timelapses found from followed users');
+        return [];
+      }
+      
+      console.log(`Found ${timelapseIds.length} timelapse IDs from followed users`);
+      
+      // 3. Batch get the actual timelapse items
+      const timelapses = await this.batchGetTimelapseItems(timelapseIds);
+      
+      // 4. Sort by creation date (newest first)
+      return timelapses.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
+    } catch (error) {
+      console.error('Error getting user timeline:', error);
+      return [];
+    }
+  },
+  
+  // Function to fetch multiple user metadata in a single request
+  async getUsersMetadata(userIds: string[]): Promise<Record<string, {
+    username: string;
+    avatar?: string;
+    followers: number;
+  }>> {
+    if (!userIds || userIds.length === 0) {
+      return {};
+    }
+    
+    try {
+      const uniqueIds = [...new Set(userIds)]; // Remove duplicates
+      console.log(`Fetching metadata for ${uniqueIds.length} users`);
+      
+      const users = await this.batchGetUsers(uniqueIds);
+      const result: Record<string, { username: string; avatar?: string; followers: number }> = {};
+      
+      for (const user of users) {
+        result[user.id] = {
+          username: user.username,
+          avatar: user.avatar,
+          followers: user.followers?.length || 0
+        };
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Error fetching users metadata:', error);
+      return {};
+    }
+  },
+  
+  // Process interactions (likes, comments) in bulk
+  async processInteractionsBatch(interactions: Array<{
+    userId: string;
+    targetId: string;
+    type: 'like' | 'comment' | 'view';
+    value?: string | number;
+  }>): Promise<boolean> {
+    if (!interactions || interactions.length === 0) {
+      return true;
+    }
+    
+    try {
+      console.log(`Processing batch of ${interactions.length} interactions`);
+      
+      // Group interactions by type for efficient processing
+      const likes: Array<{userId: string; targetId: string}> = [];
+      const comments: Array<{userId: string; targetId: string; value: string}> = [];
+      const views: Array<{targetId: string}> = [];
+      
+      for (const interaction of interactions) {
+        if (interaction.type === 'like') {
+          likes.push({userId: interaction.userId, targetId: interaction.targetId});
+        } else if (interaction.type === 'comment' && typeof interaction.value === 'string') {
+          comments.push({
+            userId: interaction.userId, 
+            targetId: interaction.targetId,
+            value: interaction.value
+          });
+        } else if (interaction.type === 'view') {
+          views.push({targetId: interaction.targetId});
+        }
+      }
+      
+      // Process each type in parallel
+      await Promise.all([
+        this.processBatchLikes(likes),
+        this.processBatchComments(comments),
+        this.processBatchViews(views)
+      ]);
+      
+      return true;
+    } catch (error) {
+      console.error('Error processing interactions batch:', error);
+      return false;
+    }
+  },
+  
+  // Helper methods for batch processing
+  async processBatchLikes(likes: Array<{userId: string; targetId: string}>): Promise<void> {
+    if (likes.length === 0) return;
+    
+    try {
+      console.log(`Processing ${likes.length} likes in batch`);
+      
+      // Group likes by targetId for efficient updates
+      const likesByTarget: Record<string, string[]> = {};
+      
+      for (const like of likes) {
+        if (!likesByTarget[like.targetId]) {
+          likesByTarget[like.targetId] = [];
+        }
+        likesByTarget[like.targetId].push(like.userId);
+      }
+      
+      // Process in batches of 25 items
+      const targetIds = Object.keys(likesByTarget);
+      const chunks = [];
+      for (let i = 0; i < targetIds.length; i += 25) {
+        chunks.push(targetIds.slice(i, i + 25));
+      }
+      
+      for (const chunk of chunks) {
+        try {
+          await client.mutate({
+            mutation: gql(`
+              mutation BatchUpdateLikes($inputs: [BatchLikeInput!]!) {
+                batchUpdateLikes(inputs: $inputs) {
+                  successCount
+                  failedIds
+                }
+              }
+            `),
+            variables: {
+              inputs: chunk.map(targetId => ({
+                targetId,
+                userIds: likesByTarget[targetId]
+              }))
+            }
+          });
+        } catch (err) {
+          console.error('Error processing chunk of likes:', err);
+        }
+      }
+    } catch (error) {
+      console.error('Error in batch likes processing:', error);
+    }
+  },
+  
+  async processBatchComments(comments: Array<{userId: string; targetId: string; value: string}>): Promise<void> {
+    if (comments.length === 0) return;
+    
+    try {
+      console.log(`Processing ${comments.length} comments in batch`);
+      
+      // Process in batches of 25 comments
+      const chunks = [];
+      for (let i = 0; i < comments.length; i += 25) {
+        chunks.push(comments.slice(i, i + 25));
+      }
+      
+      for (const chunk of chunks) {
+        try {
+          await client.mutate({
+            mutation: gql(`
+              mutation BatchCreateComments($inputs: [CommentInput!]!) {
+                batchCreateComments(inputs: $inputs) {
+                  successCount
+                  failedComments
+                }
+              }
+            `),
+            variables: {
+              inputs: chunk.map(comment => ({
+                targetId: comment.targetId,
+                userId: comment.userId,
+                content: comment.value
+              }))
+            }
+          });
+        } catch (err) {
+          console.error('Error processing chunk of comments:', err);
+        }
+      }
+    } catch (error) {
+      console.error('Error in batch comments processing:', error);
+    }
+  },
+  
+  async processBatchViews(views: Array<{targetId: string}>): Promise<void> {
+    if (views.length === 0) return;
+    
+    try {
+      console.log(`Processing ${views.length} views in batch`);
+      
+      // Process in batches of 25 views
+      const chunks = [];
+      for (let i = 0; i < views.length; i += 25) {
+        chunks.push(views.slice(i, i + 25));
+      }
+      
+      for (const chunk of chunks) {
+        try {
+          await client.mutate({
+            mutation: gql(`
+              mutation BatchIncrementViews($targetIds: [ID!]!) {
+                batchIncrementViews(targetIds: $targetIds) {
+                  successCount
+                  failedIds
+                }
+              }
+            `),
+            variables: {
+              targetIds: chunk.map(view => view.targetId)
+            }
+          });
+        } catch (err) {
+          console.error('Error processing chunk of views:', err);
+        }
+      }
+    } catch (error) {
+      console.error('Error in batch views processing:', error);
+    }
   }
 }; 

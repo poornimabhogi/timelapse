@@ -18,7 +18,6 @@ import { SocialScreenProps } from '../../types/interfaces';
 import BottomTabBar from '../../components/common/BottomTabBar';
 import { styles } from './styles';
 import { useAuth } from '../../contexts/AuthContext';
-import { generateClient } from 'aws-amplify/api';
 import { listTimelapses, getFeaturePosts } from '../../graphql/queries';
 import { onCreateTimelapse, onCreateFeaturePost } from '../../graphql/subscriptions';
 import { OnCreateTimelapseSubscription, OnCreateFeaturePostSubscription } from '../../graphql/subscriptions';
@@ -26,10 +25,10 @@ import { SocialFeedItem } from '../../types/social';
 import { SocialFeedCard } from '../../components/SocialFeedCard';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { Observable } from 'zen-observable-ts';
-import TimelapseViewer from '../../components/TimelapseViewer';
 import { dynamodbService, dataUpdateManager, TimelapseItem } from '../../services/dynamodbService';
+import awsConfig from '../../services/aws-config';
+import { TimelapseViewer } from '../../components/SimpleTimelapseViewer';
 
-const client = generateClient();
 
 interface GraphQLResponse<T> {
   data: T;
@@ -124,10 +123,7 @@ const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
 
   const fetchTimelapses = async () => {
     try {
-      const response = await client.graphql({
-        query: listTimelapses,
-        variables: { limit: 10 },
-      }) as GraphQLResponse<{ listTimelapses: { items: any[] } }>;
+      const response = await awsConfig.graphqlQuery(listTimelapses, { limit: 10 });
 
       if (response.data?.listTimelapses?.items) {
         const items = response.data.listTimelapses.items.map(convertToSocialFeedItem);
@@ -135,8 +131,8 @@ const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
         
         // Extract followed users from feed items
         const followedUserIds = items
-          .map(item => item.userId)
-          .filter(id => id !== user?.uid);
+          .map((item: any) => item.userId)
+          .filter((id: string) => id !== user?.uid);
         setFollowedUsers(followedUserIds);
       }
     } catch (error) {
@@ -149,16 +145,14 @@ const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
 
   const fetchFeaturePosts = async () => {
     try {
-      const response = await client.graphql({
-        query: getFeaturePosts,
-      }) as GraphQLResponse<{ getFeaturePosts: any[] }>;
+      const response = await awsConfig.graphqlQuery(getFeaturePosts);
 
       if (response.data?.getFeaturePosts) {
         const items = response.data.getFeaturePosts.map(convertToSocialFeedItem);
         setFeedItems(prevItems => {
           // Filter out duplicates based on ID
           const existingIds = new Set(prevItems.map(item => item.id));
-          const newItems = items.filter(item => !existingIds.has(item.id));
+          const newItems = items.filter((item: any) => !existingIds.has(item.id));
           return [...prevItems, ...newItems];
         });
       }
@@ -204,9 +198,7 @@ const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
       // Fetch feature posts
       let featurePostItems: any[] = [];
       try {
-        const postsResponse = await client.graphql({
-          query: getFeaturePosts,
-        }) as GraphQLResponse<{ getFeaturePosts: any[] }>;
+        const postsResponse = await awsConfig.graphqlQuery(getFeaturePosts);
         featurePostItems = postsResponse.data?.getFeaturePosts || [];
         console.log(`Found ${featurePostItems.length} feature posts`);
       } catch (error) {
@@ -293,9 +285,7 @@ const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
 
   useEffect(() => {
     // Set up subscriptions
-    const timelapseSubscription = (client.graphql({
-      query: onCreateTimelapse,
-    }) as unknown as Observable<SubscriptionResponse<OnCreateTimelapseSubscription>>).subscribe({
+    const timelapseSubscription = (awsConfig.graphqlQuery(onCreateTimelapse) as unknown as Observable<SubscriptionResponse<OnCreateTimelapseSubscription>>).subscribe({
       next: ({ value }) => {
         if (value.data?.onCreateTimelapse) {
           const newItem = convertToSocialFeedItem(value.data.onCreateTimelapse);
@@ -311,9 +301,7 @@ const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
       error: (error: Error) => console.error('Error in timelapse subscription:', error),
     });
 
-    const featurePostSubscription = (client.graphql({
-      query: onCreateFeaturePost,
-    }) as unknown as Observable<SubscriptionResponse<OnCreateFeaturePostSubscription>>).subscribe({
+    const featurePostSubscription = (awsConfig.graphqlQuery(onCreateFeaturePost) as unknown as Observable<SubscriptionResponse<OnCreateFeaturePostSubscription>>).subscribe({
       next: ({ value }) => {
         if (value.data?.onCreateFeaturePost) {
           const newItem = convertToSocialFeedItem(value.data.onCreateFeaturePost);

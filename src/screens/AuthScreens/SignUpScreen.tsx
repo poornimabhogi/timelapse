@@ -118,12 +118,9 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({
       
       while (attempt < MAX_RETRIES && !signUpResult) {
         try {
-          // Force Amplify reconfiguration before signup
-          const { configureAmplify } = require('../../services/aws-config');
-          configureAmplify();
-          console.log(`Amplify configured for signup attempt ${attempt + 1}`);
+          console.log(`Attempting signup retry ${attempt + 1}`);
           
-          // Wait a bit between configuration and signup
+          // Wait a bit before signup attempt
           await new Promise(resolve => setTimeout(resolve, 100));
           
           // Try signup

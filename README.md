@@ -204,10 +204,6 @@ terraform init
 terraform apply
 ```
 
-3. Configure Amplify
-```bash
-amplify init
-amplify push
 ```
 
 ### Development
@@ -276,3 +272,96 @@ npm run android
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Fixing Loading Issues
+
+If you encounter loading issues in the SocialScreen component where the loading state gets stuck, follow these steps:
+
+### 1. Ensure Error State Handling
+
+Add error state handling to both screens to provide better user feedback:
+
+```tsx
+// Add error state
+const [error, setError] = useState<string | null>(null);
+
+// In the refreshAllData or fetchTimelapses function
+try {
+  // Existing code...
+} catch (error) {
+  console.error("Error fetching data:", error);
+  setError("Failed to load content. Please try again.");
+} finally {
+  // Always reset loading and refreshing states
+  setLoading(false);
+  setRefreshing(false);
+}
+
+// In the render section
+if (error && !refreshing) {
+  return (
+    <View style={styles.errorContainer}>
+      <Text style={styles.errorText}>{error}</Text>
+      <TouchableOpacity onPress={onRefresh} style={styles.retryButton}>
+        <Text style={styles.retryButtonText}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+```
+
+### 2. Add Safety Timeout
+
+Implement a safety timeout to ensure the loading state is always eventually set to false:
+
+```tsx
+// At the beginning of data fetching functions
+const safetyTimeout = setTimeout(() => {
+  if (loading) {
+    console.log("Safety timeout triggered: resetting loading state");
+    setLoading(false);
+  }
+}, 10000); // 10-second safety timeout
+
+// In finally block
+clearTimeout(safetyTimeout);
+setLoading(false);
+```
+
+### 3. Enhanced Debugging
+
+Add verbose logging to track the component lifecycle and loading states:
+
+```tsx
+// At the beginning of component
+useEffect(() => {
+  console.log("Component mounted, loading:", loading);
+  return () => {
+    console.log("Component unmounting");
+  };
+}, []);
+
+// When setting loading state
+console.log("Setting loading state to:", true/false);
+```
+
+### 4. Update LoadingSpinner Component
+
+Make sure the LoadingSpinner component shows feedback to the user:
+
+```tsx
+// Update call to LoadingSpinner
+<LoadingSpinner message="Loading your content..." />
+
+// In LoadingSpinner component
+export const LoadingSpinner: React.FC<{ message?: string }> = ({ message }) => {
+  return (
+    <View style={styles.container}>
+      <ActivityIndicator size="large" color="#6B4EFF" />
+      {message && <Text style={styles.message}>{message}</Text>}
+    </View>
+  );
+};
+```
+
+By implementing these changes, you'll improve the user experience when data is loading and provide better feedback in case of errors.

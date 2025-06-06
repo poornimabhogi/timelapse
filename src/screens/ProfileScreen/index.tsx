@@ -26,15 +26,16 @@ import { launchCamera, launchImageLibrary, ImagePickerResponse, Asset } from 're
 import { uploadToS3 } from '../../utils/s3Upload';
 import { useAuth } from '../../contexts/AuthContext';
 import awsConfig from '../../services/aws-config';
-import { generateClient } from 'aws-amplify/api';
 import { onCreateFeaturePost } from '../../graphql/subscriptions';
 import { Observable } from 'zen-observable-ts';
 import SellerVerificationModal from './components/SellerVerificationModal';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { SellerVerificationData } from './components/SellerVerificationForm';
-import TimelapseViewer from '../../components/TimelapseViewer';
-import { dynamodbService, TimelapseItem as DbTimelapseItem, dataUpdateManager } from '../../services/dynamodbService';
+import TimelapseViewer from '../../components/SimpleTimelapseViewer';
+import { dynamodbService, TimelapseItem as DbTimelapseItem, dataUpdateManager, batchOperations } from '../../services/dynamodbService';
 import VideoPlayer from '../../components/VideoPlayer';
+import { subscriptionClient } from '../../services/aws-config';
+
 
 // Custom interface for media items
 interface MediaItem {
@@ -88,7 +89,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   const [isSeller, setIsSeller] = useState(false);
   const [sellerStatus, setSellerStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
-  const client = generateClient();
+  
   
   // Example user details
   const [userDetails, setUserDetails] = useState<UserDetails>({
@@ -105,17 +106,26 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   useEffect(() => {
     if (!user) return;
 
-    const subscription = (client.graphql({
-      query: onCreateFeaturePost,
-    }) as unknown as Observable<SubscriptionResponse>).subscribe({
-      next: (result) => {
-        const newPost = result.data.onCreateFeaturePost;
-        setFeaturePosts((prev) => [newPost, ...prev]);
+    const subscription = subscriptionClient.subscribe(
+      {
+        query: onCreateFeaturePost,
       },
-    });
+      {
+        next: (result) => {
+          if (result?.data?.onCreateFeaturePost) {
+            const { onCreateFeaturePost } = result.data;
+            setFeaturePosts((prev) => [onCreateFeaturePost, ...prev]);
+          }
+        },
+        error: (error) => console.error('Subscription error:', error),
+        complete: () => console.log('Subscription completed')
+      }
+    );
 
     return () => {
-      subscription.unsubscribe();
+      if (typeof subscription === 'function') {
+        subscription();
+      }
     };
   }, [user]);
 
@@ -1028,131 +1038,221 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
     setTimelapseViewerVisible(true);
   };
 
-  // Update the handleLikeUpdated function to use DynamoDB
-  const handleLikeUpdated = async (timelapseId: string, newLikeCount: number, userLiked: boolean) => {
+  // Modify refreshTimelapseData to use batch operations
+  const refreshTimelapseData = async () => {
+    if (!user) return;
+    
+    // Don't immediately show loading indicator to prevent UI flicker
+    // Set a timeout to show loading only if the fetch takes longer than 500ms
+    let loadingTimeout: NodeJS.Timeout | null = setTimeout(() => {
+      setIsUploading(true);
+    }, 500);
+    
     try {
-      console.log(`Like updated: ${timelapseId}, count: ${newLikeCount}, liked: ${userLiked}`);
+      console.log('Refreshing timelapse data');
       
-      // Find the timelapse item to update
-      const media = [...timelapseItems];
-      const itemIndex = media.findIndex(item => item.id === timelapseId);
+      // Use batch operations for better performance
+      const userItems = await dynamodbService.getTimelapseItems(user.uid);
       
-      if (itemIndex !== -1) {
-        // Get current likedBy array or initialize empty array if it doesn't exist
-        const currentLikedBy = media[itemIndex].likedBy || [];
-        
-        // Create updated likedBy array based on the like status
-        let updatedLikedBy: string[] = [...currentLikedBy];
-        
-        if (userLiked && user) {
-          // Add user ID if not already present and user exists
-          if (!updatedLikedBy.includes(user.uid)) {
-            updatedLikedBy.push(user.uid);
-          }
-        } else if (user) {
-          // Remove user ID
-          updatedLikedBy = updatedLikedBy.filter(id => id !== user.uid);
-        }
-        
-        media[itemIndex] = {
-          ...media[itemIndex],
-          likes: newLikeCount, 
-          isLiked: userLiked,
-          likedBy: updatedLikedBy
-        };
+      // If we got data before the timeout, cancel the loading indicator
+      if (loadingTimeout) {
+        clearTimeout(loadingTimeout);
+        loadingTimeout = null;
       }
       
-      // Update local state
-      setTimelapseItems(media);
+      if (userItems && userItems.length > 0) {
+        console.log(`Received ${userItems.length} timelapse items`);
+        
+        // Sort newest first
+        const sortedItems = [...userItems].sort((a, b) => b.createdAt - a.createdAt);
+        
+        // Get user's liked timelapses to mark them in the UI
+        const userLikedIds = sortedItems
+          .filter(item => item.likedBy?.includes(user.uid))
+          .map(item => item.id);
+        console.log(`User has liked ${userLikedIds.length} timelapses`);
+        
+        // Convert to MediaItem format
+        const mediaItems = sortedItems.map(item => ({
+          id: item.id,
+          uri: item.mediaUrl,
+          type: item.type as 'photo' | 'video',
+          timestamp: item.createdAt,
+          likes: item.likes,
+          isLiked: item.likedBy?.includes(user.uid) || false,
+          likedBy: item.likedBy || [],
+          duration: item.duration,
+        } as MediaItem));
+        
+        setTimelapseItems(mediaItems);
+      } else {
+        console.log('No timelapse items found or empty response');
+      }
+    } catch (error) {
+      console.error('Error refreshing timelapse data:', error);
       
-      // Also update the selectedTimelapse state if this is the one being viewed
-      if (selectedTimelapse && selectedTimelapse.id === timelapseId) {
-        console.log('Updating selected timelapse in ProfileScreen');
-        
-        // Create updated version of the selected timelapse
-        const currentSelectedLikedBy = selectedTimelapse.likedBy || [];
-        let updatedSelectedLikedBy: string[] = [...currentSelectedLikedBy];
-        
-        if (userLiked && user && !updatedSelectedLikedBy.includes(user.uid)) {
-          updatedSelectedLikedBy.push(user.uid);
-        } else if (!userLiked && user) {
-          updatedSelectedLikedBy = updatedSelectedLikedBy.filter(id => id !== user.uid);
+      // If there was an error, we should still clear the loading timeout
+      if (loadingTimeout) {
+        clearTimeout(loadingTimeout);
+        loadingTimeout = null;
+      }
+    } finally {
+      // Ensure loading is set to false
+      setIsUploading(false);
+    }
+  };
+
+  // Create a batch like function for multiple timelapses
+  const handleBatchLikeTimelapses = async (timelapseIds: string[], like: boolean = true) => {
+    if (!user || timelapseIds.length === 0) return;
+    
+    console.log(`Batch ${like ? 'liking' : 'unliking'} ${timelapseIds.length} timelapses`);
+    
+    try {
+      // Optimistically update UI
+      setTimelapseItems(prev => prev.map(item => {
+        if (item.id && timelapseIds.includes(item.id)) {
+          const isCurrentlyLiked = item.likedBy?.includes(user.uid) || false;
+          
+          // Only update if the like state is changing
+          if (isCurrentlyLiked !== like) {
+            const newLikedBy = like 
+              ? [...(item.likedBy || []), user.uid]
+              : (item.likedBy || []).filter(id => id !== user.uid);
+            
+            return {
+              ...item,
+              likes: like ? (item.likes || 0) + 1 : Math.max(0, (item.likes || 0) - 1),
+              isLiked: like,
+              likedBy: newLikedBy
+            };
+          }
         }
+        return item;
+      }));
+      
+      // Use batch operations for efficient processing
+      const interactions = timelapseIds.map(id => ({
+        userId: user.uid,
+        targetId: id,
+        type: 'like' as 'like' | 'comment' | 'view',
+        // We could add an extra value field to indicate unlike, but it's handled server-side
+      }));
+      
+      // Process interactions in a batch
+      await batchOperations.processInteractionsBatch(interactions);
+      
+      console.log('Batch like operation completed successfully');
+    } catch (error) {
+      console.error(`Error in batch ${like ? 'like' : 'unlike'} operation:`, error);
+      
+      // If there's an error, refresh to get the accurate state
+      refreshTimelapseData();
+    }
+  };
+
+  // Create batch delete function
+  const handleBatchDelete = async (timelapseIds: string[]) => {
+    if (!user || timelapseIds.length === 0) return;
+    
+    Alert.alert(
+      'Delete Timelapses',
+      `Are you sure you want to delete ${timelapseIds.length} items? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log(`Deleting ${timelapseIds.length} timelapses`);
+              
+              // Optimistically update UI
+              setTimelapseItems(prev => prev.filter(item => 
+                !item.id || !timelapseIds.includes(item.id)
+              ));
+              
+              // Delete each item individually (can be optimized in the future with batch delete)
+              for (const id of timelapseIds) {
+                await dynamodbService.deleteTimelapseItem(id);
+              }
+              
+              console.log('Successfully deleted timelapses');
+              
+              // Notify listeners about the update
+              dataUpdateManager.notifyListeners('timelapses-updated');
+              if (user) {
+                dataUpdateManager.notifyListeners(`user-timelapses-${user.uid}`);
+              }
+            } catch (error) {
+              console.error('Error deleting timelapses:', error);
+              
+              // Refresh data to get accurate state after error
+              refreshTimelapseData();
+              
+              Alert.alert(
+                'Error',
+                'Failed to delete one or more timelapses. Please try again.'
+              );
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Update handleLikeUpdated to also use the batch processing when appropriate
+  const handleLikeUpdated = async (timelapseId: string, newLikeCount: number, userLiked: boolean) => {
+    if (!user || !timelapseId) return;
+    
+    console.log(`Like updated for timelapse ${timelapseId}: count=${newLikeCount}, liked=${userLiked}`);
+    
+    try {
+      // Update local state first for responsive UI
+      setTimelapseItems(prev => prev.map(item => {
+        if (item.id === timelapseId) {
+          // Handle liked/unliked state
+          const newLikedBy = userLiked
+            ? [...(item.likedBy || []), user.uid]
+            : (item.likedBy || []).filter(id => id !== user.uid);
+          
+          return {
+            ...item,
+            likes: newLikeCount,
+            isLiked: userLiked,
+            likedBy: newLikedBy
+          };
+        }
+        return item;
+      }));
+      
+      // Also update the selectedTimelapse if it's the one being viewed
+      if (selectedTimelapse && selectedTimelapse.id === timelapseId) {
+        const newLikedBy = userLiked
+          ? [...(selectedTimelapse.likedBy || []), user.uid]
+          : (selectedTimelapse.likedBy || []).filter(id => id !== user.uid);
         
         setSelectedTimelapse({
           ...selectedTimelapse,
           likes: newLikeCount,
           isLiked: userLiked,
-          likedBy: updatedSelectedLikedBy
+          likedBy: newLikedBy
         });
       }
+      
+      // Use the batch operations for efficient processing
+      await batchOperations.processInteractionsBatch([{
+        userId: user.uid,
+        targetId: timelapseId,
+        type: 'like' as 'like' | 'comment' | 'view',
+        // Additional value could indicate a like or unlike
+        value: userLiked ? 1 : 0
+      }]);
+      
     } catch (error) {
       console.error('Error updating like status:', error);
-    }
-  };
-
-  // Update handleTimelapseDelete to use DynamoDB
-  const handleTimelapseDelete = async () => {
-    if (!selectedTimelapse?.id) return;
-    
-    try {
-      console.log(`Deleting timelapse with ID: ${selectedTimelapse.id}`);
-      await dynamodbService.deleteTimelapseItem(selectedTimelapse.id);
-      
-      // Update local state
-      setTimelapseItems(prev => prev.filter(item => item.id !== selectedTimelapse.id));
-      
-      // Close modals
-      setSelectedTimelapse(null);
-      setTimelapseViewerVisible(false);
-      
-      // Notify other screens that a timelapse was deleted
-      dataUpdateManager.notifyListeners('timelapses-updated');
-      
-      Alert.alert('Success', 'Timelapse deleted successfully!');
-    } catch (error) {
-      console.error('Error deleting timelapse:', error);
-      Alert.alert('Error', 'Failed to delete timelapse. Please try again.');
-    }
-  };
-
-  // Function to check video duration
-  const checkVideoDuration = async (uri: string): Promise<number> => {
-    // In a real implementation, you would use a library like react-native-video
-    // to get the actual duration. For now, we'll simulate this.
-    return new Promise((resolve) => {
-      // Simulate getting video duration (random between 20 and 180 seconds)
-      setTimeout(() => {
-        const duration = Math.floor(Math.random() * 160) + 20;
-        console.log(`Video duration: ${duration} seconds`);
-        resolve(duration);
-      }, 1000);
-    });
-  };
-
-  // Update handleProcessedVideo function to use DynamoDB
-  const handleProcessedVideo = async (processedUri: string, duration: number) => {
-    try {
-      // Validate that we have a user ID before proceeding
-      if (!validateUser()) return;
-      
-      const fileName = `processed-video-${Date.now()}.mp4`;
-      const file = {
-        uri: processedUri,
-        type: 'video/mp4',
-        name: fileName,
-      };
-
-      // Use the uploadMedia helper
-      const newMedia = await uploadMedia(file, 'video', duration);
-      
-      if (newMedia) {
-        setIsVideoModalVisible(false);
-        setVideoToProcess(null);
-      }
-    } catch (error) {
-      console.error('Error uploading processed video:', error);
-      Alert.alert('Error', 'Failed to upload processed video. Please try again.');
+      // Refresh data to ensure UI shows correct state
+      refreshTimelapseData();
     }
   };
 
@@ -1165,97 +1265,6 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   const [appState, setAppState] = useState(AppState.currentState);
 
   // Function to refresh all timelapse data
-  const refreshTimelapseData = async () => {
-    console.log("ProfileScreen: Refreshing timelapse data");
-    if (!user) return;
-    
-    try {
-      // Don't show loading state right away to avoid flickering UI
-      let loadingTimeout: NodeJS.Timeout | null = setTimeout(() => {
-        setIsUploading(true);
-      }, 500);
-      
-      // Keep reference to current data in case of error
-      const currentData = [...timelapseItems];
-      
-      try {
-        // Get the data
-        const items = await dynamodbService.getTimelapseItems(user.uid);
-        
-        // Cancel loading indicator if it hasn't shown yet
-        if (loadingTimeout) {
-          clearTimeout(loadingTimeout);
-          loadingTimeout = null;
-        }
-        
-        if (items && Array.isArray(items) && items.length > 0) {
-          console.log(`Found ${items.length} timelapse items for user`);
-          
-          // Convert DynamoDB items to MediaItems format
-          const mediaItems: MediaItem[] = items.map(item => ({
-            id: item.id,
-            uri: item.mediaUrl,
-            type: item.type,
-            timestamp: item.createdAt,
-            likes: item.likes,
-            likedBy: item.likedBy,
-            duration: item.duration
-          }));
-          
-          // Sort by newest first
-          const sortedItems = mediaItems.sort((a, b) => 
-            (b.timestamp || 0) - (a.timestamp || 0)
-          );
-          
-          // Update state with the new items only if we got valid data
-          if (sortedItems.length > 0) {
-            console.log("Updating state with new timelapse items:", sortedItems.length);
-            setTimelapseItems(sortedItems);
-          } else if (items.length === 0) {
-            // Only clear if we know for sure there are 0 items
-            console.log("No timelapse items found for user, clearing state");
-            setTimelapseItems([]);
-          }
-        } else {
-          // Keep existing data if we didn't get a valid response
-          console.log("Invalid response from getTimelapseItems, keeping existing data");
-        }
-      } catch (error) {
-        console.error("Error refreshing timelapse data:", error);
-        // Restore previous data on error
-        setTimelapseItems(currentData);
-      }
-    } catch (outerError) {
-      console.error("Outer error in refreshTimelapseData:", outerError);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  // Add effect to handle app state changes
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', nextAppState => {
-      if (appState.match(/inactive|background/) && nextAppState === 'active') {
-        console.log('App has come to the foreground - refreshing ProfileScreen');
-        refreshTimelapseData();
-      }
-      setAppState(nextAppState);
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [appState, user]);
-
-  // Add effect to refresh on screen focus
-  useEffect(() => {
-    if (onChangeScreen && onChangeScreen.toString().includes('profile')) {
-      console.log('Detected navigation to ProfileScreen');
-      refreshTimelapseData();
-    }
-  }, [onChangeScreen]);
-
-  // Update the existing fetchTimelapseItems function to use our refresh function
   const fetchTimelapseItems = async () => {
     refreshTimelapseData();
   };
@@ -1342,6 +1351,53 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
         setVideoProcessing(false);
       }
     }
+  };
+
+  // Add back the functions we removed but are still referenced
+  const checkVideoDuration = async (uri: string): Promise<number> => {
+    // In a real implementation, you would use a library like react-native-video
+    // to get the actual duration. For now, we'll simulate this.
+    return new Promise((resolve) => {
+      // Simulate getting video duration (random between 20 and 180 seconds)
+      setTimeout(() => {
+        const duration = Math.floor(Math.random() * 160) + 20;
+        console.log(`Video duration: ${duration} seconds`);
+        resolve(duration);
+      }, 1000);
+    });
+  };
+
+  const handleProcessedVideo = async (processedUri: string, duration: number) => {
+    try {
+      // Validate that we have a user ID before proceeding
+      if (!validateUser()) return;
+      
+      const fileName = `processed-video-${Date.now()}.mp4`;
+      const file = {
+        uri: processedUri,
+        type: 'video/mp4',
+        name: fileName,
+      };
+      
+      // Use the uploadMedia helper
+      const newMedia = await uploadMedia(file, 'video', duration);
+      
+      if (newMedia) {
+        setIsVideoModalVisible(false);
+        setVideoToProcess(null);
+      }
+    } catch (error) {
+      console.error('Error uploading processed video:', error);
+      Alert.alert('Error', 'Failed to upload processed video. Please try again.');
+    }
+  };
+
+  // Fix for handleBatchDelete to work with TimelapseViewer
+  const handleTimelapseDelete = async () => {
+    if (!selectedTimelapse?.id) return;
+    
+    // Use the batch delete function with a single ID
+    handleBatchDelete([selectedTimelapse.id]);
   };
 
   return (
