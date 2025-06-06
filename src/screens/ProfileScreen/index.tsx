@@ -26,6 +26,7 @@ import { launchCamera, launchImageLibrary, ImagePickerResponse, Asset } from 're
 import { uploadToS3 } from '../../utils/s3Upload';
 import { useAuth } from '../../contexts/AuthContext';
 import awsConfig from '../../services/aws-config';
+import { gql } from '@apollo/client';
 import { onCreateFeaturePost } from '../../graphql/subscriptions';
 import { Observable } from 'zen-observable-ts';
 import SellerVerificationModal from './components/SellerVerificationModal';
@@ -106,25 +107,22 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   useEffect(() => {
     if (!user) return;
 
-    const subscription = subscriptionClient.subscribe(
-      {
-        query: onCreateFeaturePost,
+    const subscription = subscriptionClient.subscribe({
+      query: gql(onCreateFeaturePost),
+    }).subscribe({
+      next: (result: any) => {
+        if (result?.data?.onCreateFeaturePost) {
+          const { onCreateFeaturePost } = result.data;
+          setFeaturePosts((prev) => [onCreateFeaturePost, ...prev]);
+        }
       },
-      {
-        next: (result) => {
-          if (result?.data?.onCreateFeaturePost) {
-            const { onCreateFeaturePost } = result.data;
-            setFeaturePosts((prev) => [onCreateFeaturePost, ...prev]);
-          }
-        },
-        error: (error) => console.error('Subscription error:', error),
-        complete: () => console.log('Subscription completed')
-      }
-    );
+      error: (error: any) => console.error('Subscription error:', error),
+      complete: () => console.log('Subscription completed')
+    });
 
     return () => {
-      if (typeof subscription === 'function') {
-        subscription();
+      if (subscription && subscription.unsubscribe) {
+        subscription.unsubscribe();
       }
     };
   }, [user]);

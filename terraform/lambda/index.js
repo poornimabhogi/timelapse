@@ -1,6 +1,6 @@
-const AWS = require('aws-sdk');
-const sharp = require('sharp');
-const path = require('path');
+import AWS from 'aws-sdk';
+import sharp from 'sharp';
+import path from 'path';
 const s3 = new AWS.S3();
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 

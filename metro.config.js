@@ -26,6 +26,13 @@ const config = {
     alias: {
       // Prevent problematic module resolution
       'missing-asset-registry-path': '@react-native/assets-registry/registry',
+      // AWS SDK v3 polyfills
+      'crypto': 'crypto-browserify',
+      'stream': 'stream-browserify',
+      'buffer': 'buffer',
+      'util': 'util',
+      'url': 'url',
+      'path': 'path-browserify',
     },
     // CRITICAL FIX: Disable package exports to resolve Firebase/Hermes issues
     unstable_enablePackageExports: false,

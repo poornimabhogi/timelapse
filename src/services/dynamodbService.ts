@@ -1,10 +1,13 @@
-import awsConfig from './aws-config';
+import awsConfig, { 
+  graphqlClient, 
+  apolloClient, 
+  graphqlQuery, 
+  graphqlMutation, 
+  graphqlSubscription 
+} from './aws-config';
 import { EventEmitter } from 'events';
 import { Observable } from 'zen-observable-ts';
-import { graphqlClient } from './aws-config';
-import { ApolloClient, gql } from '@apollo/client';
-
-import { config } from 'process';
+import { gql } from '@apollo/client';
 interface GraphQLResult<T> {
   data?: T;
   errors?: Array<{ message: string }>;
@@ -23,7 +26,7 @@ export type User = {
   createdAt?: string;
 };
 
-// Create a GraphQL client
+// Use the properly configured GraphQL client from AWS config
 const client = graphqlClient;
 // Define types for GraphQL responses
 interface GraphQLResponse<T> {

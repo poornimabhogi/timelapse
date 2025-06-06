@@ -1,6 +1,6 @@
 // lambda/batch_processor.js
-const { DynamoDBClient, BatchGetItemCommand, BatchWriteItemCommand, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
-const { marshall, unmarshall } = require('@aws-sdk/util-dynamodb');
+import { DynamoDBClient, BatchGetItemCommand, BatchWriteItemCommand, UpdateItemCommand } from ('@aws-sdk/client-dynamodb');
+import { marshall, unmarshall } from ('@aws-sdk/util-dynamodb');
 
 const dynamoDB = new DynamoDBClient({ region: process.env.REGION || 'us-east-1' });
 const TIMELAPSE_TABLE = process.env.TIMELAPSE_TABLE || 'timelapseItems';
