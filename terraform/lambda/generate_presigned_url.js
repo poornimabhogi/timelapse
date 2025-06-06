@@ -23,6 +23,7 @@ exports.handler = async (event) => {
      } else {
       // Fallback to anonymous if no user ID available
       userId = 'anonymous';
+      console.log('No user ID available, using anonymous');
      }
 
      // Logging for debugging
