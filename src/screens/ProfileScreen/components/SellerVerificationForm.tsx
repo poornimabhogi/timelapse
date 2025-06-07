@@ -242,11 +242,39 @@ const SellerVerificationForm: React.FC<SellerVerificationFormProps> = ({
       return;
     }
 
+    // Validate that we have all required data
+    if (!formData.businessName || !formData.businessType || !formData.taxId) {
+      Alert.alert('Incomplete Information', 'Please fill in all required business information.');
+      return;
+    }
+
+    if (!formData.termsAccepted || !formData.privacyPolicyAccepted) {
+      Alert.alert('Agreement Required', 'You must accept the terms and conditions and privacy policy to proceed.');
+      return;
+    }
+
     setLoading(true);
     try {
+      console.log('Submitting verification form with real data:', {
+        businessName: formData.businessName,
+        businessType: formData.businessType,
+        hasDocuments: !!(formData.businessDocuments?.identityProof && formData.businessDocuments?.businessLicense),
+        categoriesCount: formData.categories?.length || 0
+      });
+
       await onSubmit(formData as SellerVerificationData);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to submit verification form');
+      
+      console.log('Verification form submitted successfully');
+    } catch (error: any) {
+      console.error('Error submitting verification form:', error);
+      Alert.alert(
+        'Submission Failed', 
+        `Failed to submit verification: ${error?.message || 'Unknown error'}. Please check your connection and try again.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Retry', onPress: () => handleSubmit() }
+        ]
+      );
     } finally {
       setLoading(false);
     }

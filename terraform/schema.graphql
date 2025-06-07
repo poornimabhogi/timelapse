@@ -81,6 +81,18 @@ type Query {
   getSellerVerification(userId: ID!): SellerVerification
   listSellerVerifications(status: String, limit: Int, nextToken: String): SellerVerificationConnection
   
+  # Product queries
+  getUserProducts(sellerId: ID!): [Product]
+  getProduct(id: ID!): Product
+  getAllProducts(limit: Int, nextToken: String): ProductConnection
+  getVerifiedSellersProducts(limit: Int, nextToken: String): ProductConnection
+  getSellerDetails(sellerId: ID!): SellerDetails
+  
+  # Following-based queries for personalized experience
+  getFollowedSellers(userId: ID!): [User]
+  isFollowing(followerId: ID!, followingId: ID!): Boolean
+  getFollowedSellerProducts(userId: ID!, limit: Int, nextToken: String): ProductConnection
+  
   # Bulk user operations
   getUsersByIds(ids: [ID!]!): [User]
   getUserActivities(userId: ID!, limit: Int, nextToken: String): ActivityConnection
@@ -140,12 +152,19 @@ type Mutation {
   
   # Seller verification operations
   saveSellerVerification(input: SaveSellerVerificationInput!): SellerVerification
+  updateSellerVerificationStatus(input: UpdateSellerVerificationStatusInput!): SellerVerification
   sendSellerVerificationEmail(
     businessName: String!, 
     businessEmail: String!, 
     userId: String!, 
     verificationDetails: AWSJSON!
   ): SellerVerificationEmailResponse
+  
+  # Product operations
+  createProduct(input: CreateProductInput!): Product
+  updateProduct(input: UpdateProductInput!): Product
+  deleteProduct(id: ID!): Boolean
+  updateProductInventory(input: UpdateInventoryInput!): InventoryUpdate
   
   # Batch operations
   batchUpdateLikes(inputs: [BatchLikeInput!]!): BatchOperationResult
@@ -247,6 +266,35 @@ extend type Subscription {
   # For seller verification
   onUpdateSellerVerification(userId: ID): SellerVerification
     @aws_subscribe(mutations: ["saveSellerVerification"])
+  
+  # Product subscriptions for live inventory updates
+  onCreateProduct: Product
+    @aws_subscribe(mutations: ["createProduct"])
+  
+  onUpdateProduct(id: ID): Product
+    @aws_subscribe(mutations: ["updateProduct"])
+  
+  onDeleteProduct(id: ID): Product
+    @aws_subscribe(mutations: ["deleteProduct"])
+  
+  # Category-specific product updates
+  onProductsByCategory(category: String!): Product
+    @aws_subscribe(mutations: ["createProduct", "updateProduct"])
+  
+  # Seller-specific product updates for Local Shop
+  onSellerProducts(sellerId: ID!): Product
+    @aws_subscribe(mutations: ["createProduct", "updateProduct", "deleteProduct"])
+  
+  # Following-based subscriptions for personalized updates
+  onFollowedSellerProducts(followerId: ID!): Product
+    @aws_subscribe(mutations: ["createProduct", "updateProduct", "deleteProduct"])
+  
+  onFollowedSellerInventory(followerId: ID!): InventoryUpdate
+    @aws_subscribe(mutations: ["updateProductInventory"])
+  
+  # Inventory-specific updates
+  onInventoryUpdate(productId: ID): InventoryUpdate
+    @aws_subscribe(mutations: ["updateProductInventory"])
 }
 
 # Update schema definition to include Subscription
@@ -290,10 +338,115 @@ input SaveSellerVerificationInput {
   businessDescription: String!
   categories: [String!]!
   status: String!
+  estimatedAnnualRevenue: String
+  socialMedia: AWSJSON
+  businessDocuments: AWSJSON!
+  termsAccepted: Boolean!
+  privacyPolicyAccepted: Boolean!
+}
+
+# Add input type for updating seller verification status
+input UpdateSellerVerificationStatusInput {
+  userId: ID!
+  status: String!
+  reviewNotes: String
+  updatedAt: String!
 }
 
 # Add connection type for pagination
 type SellerVerificationConnection {
   items: [SellerVerification]
   nextToken: String
+}
+
+# Product type for marketplace
+type Product {
+  id: ID!
+  name: String!
+  description: String!
+  price: Float!
+  images: [String!]!
+  category: String!
+  sellerId: ID!
+  createdAt: String!
+  updatedAt: String!
+  isActive: Boolean!
+  inventory: Int
+}
+
+# Input for creating products
+input CreateProductInput {
+  name: String!
+  description: String!
+  price: Float!
+  images: [String!]!
+  category: String!
+  sellerId: ID!
+  inventory: Int
+}
+
+# Input for updating products
+input UpdateProductInput {
+  id: ID!
+  name: String
+  description: String
+  price: Float
+  images: [String!]
+  category: String
+  inventory: Int
+  isActive: Boolean
+}
+
+# Input for inventory updates
+input UpdateInventoryInput {
+  productId: ID!
+  newInventory: Int!
+  change: Int!
+  reason: String
+}
+
+# Inventory update type for subscriptions
+type InventoryUpdate {
+  productId: ID!
+  oldInventory: Int!
+  newInventory: Int!
+  change: Int!
+  reason: String
+  timestamp: String!
+  sellerId: ID!
+}
+
+# Connection type for product pagination
+type ProductConnection {
+  items: [Product]
+  nextToken: String
+}
+
+# Enhanced Product type with seller info for marketplace
+type ProductWithSeller {
+  id: ID!
+  name: String!
+  description: String!
+  price: Float!
+  images: [String!]!
+  category: String!
+  sellerId: ID!
+  sellerName: String
+  sellerVerified: Boolean!
+  businessName: String
+  createdAt: String!
+  updatedAt: String!
+  isActive: Boolean!
+  inventory: Int
+}
+
+# Seller details for products
+type SellerDetails {
+  id: ID!
+  name: String
+  email: String
+  verified: Boolean!
+  businessName: String
+  businessType: String
+  status: String
 }

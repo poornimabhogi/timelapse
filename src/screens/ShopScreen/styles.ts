@@ -227,5 +227,129 @@ export const styles = StyleSheet.create({
   },
   bottomNavSpacer: {
     height: 64,
-  }
+  },
+  // Verified seller styles
+  verifiedSellerProduct: {
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    backgroundColor: '#F8FFF8',
+  },
+  verifiedBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#4CAF50',
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    zIndex: 1,
+  },
+  verifiedBadgeText: {
+    color: 'white',
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
+  sellerName: {
+    fontSize: 11,
+    color: '#4CAF50',
+    fontWeight: '500',
+    marginBottom: 4,
+    fontStyle: 'italic',
+  },
+  // Empty marketplace styles
+  emptyMarketplace: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingTop: 40,
+  },
+  emptyMarketplaceIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  emptyMarketplaceTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  emptyMarketplaceText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  marketplaceInfo: {
+    backgroundColor: '#F8F9FA',
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 24,
+    width: '100%',
+  },
+  marketplaceInfoTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  marketplaceInfoItem: {
+    fontSize: 14,
+    color: '#555',
+    marginBottom: 8,
+    paddingLeft: 8,
+  },
+  emptyMarketplaceFooter: {
+    fontSize: 14,
+    color: '#6B4EFF',
+    fontWeight: '600',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  // Real-time inventory and live update styles
+  newProductHighlight: {
+    borderWidth: 2,
+    borderColor: '#FF4081',
+    backgroundColor: '#FFF8FA',
+    transform: [{ scale: 1.02 }],
+  },
+  inventoryBadge: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
+    zIndex: 1,
+  },
+  inStockBadge: {
+    backgroundColor: '#4CAF50',
+  },
+  lowStockBadge: {
+    backgroundColor: '#FF9800',
+  },
+  outOfStockBadge: {
+    backgroundColor: '#F44336',
+  },
+  inventoryText: {
+    color: 'white',
+    fontSize: 8,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  outOfStockImage: {
+    opacity: 0.5,
+    filter: 'grayscale(100%)',
+  },
+  outOfStockText: {
+    opacity: 0.6,
+    textDecorationLine: 'line-through',
+  },
+  disabledButton: {
+    opacity: 0.5,
+    backgroundColor: '#CCCCCC',
+  },
 }); 

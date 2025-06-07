@@ -17,7 +17,19 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import  awsConfig  from '../../services/aws-config';
 import BottomTabBar from '../../components/common/BottomTabBar';
-import { sendSellerVerificationEmail, saveSellerVerification } from '../../services/aws-config';
+import { 
+  sendSellerVerificationEmail, 
+  saveSellerVerification, 
+  getSellerVerificationStatus,
+  updateSellerVerificationStatus,
+  sendSellerStatusNotification 
+} from '../../services/aws-config';
+import { 
+  subscribeToSellerUpdates, 
+  unsubscribeFromAll,
+  ProductSubscriptionCallbacks,
+  updateInventory
+} from '../../services/subscriptionService';
 
 // Try importing with full paths - might help with path resolution issues
 import SellerVerificationModal from '../ProfileScreen/components/SellerVerificationModal';
@@ -114,60 +126,35 @@ const LocalShop: React.FC<LocalShopProps> = ({ onChangeScreen }) => {
   });
   const client = awsConfig.graphqlQuery;
   const [viewOnly, setViewOnly] = useState(false);
+  const [liveUpdatesEnabled, setLiveUpdatesEnabled] = useState(false);
   
-  // Mock verification data for viewing
-  const mockVerificationData: SellerVerificationData = {
-    businessName: 'Sample Business',
-    businessType: 'LLC',
-    taxId: '123456789',
-    businessAddress: {
-      street: '123 Main St',
-      city: 'San Francisco',
-      state: 'CA',
-      zipCode: '94105',
-      country: 'USA',
-    },
-    contactInfo: {
-      phone: '555-123-4567',
-      email: 'business@example.com',
-      website: 'www.samplebusiness.com',
-    },
-    businessDocuments: {
-      identityProof: 'document_url_placeholder.pdf',
-      businessLicense: 'document_url_placeholder.pdf',
-      taxRegistration: 'document_url_placeholder.pdf',
-      bankStatement: 'document_url_placeholder.pdf',
-    },
-    businessDescription: 'A sample business selling high-quality handmade products.',
-    categories: ['Handmade', 'Crafts', 'Jewelry'],
-    estimatedAnnualRevenue: '100000',
-    socialMedia: {
-      instagram: '@samplebusiness',
-      facebook: 'Sample Business',
-      twitter: '@samplebiz',
-    },
-    termsAccepted: true,
-    privacyPolicyAccepted: true,
-  };
 
-  // Mock product data for testing
-  const mockProducts: Product[] = [
-    {
-      id: '1',
-      name: 'Sample Product',
-      description: 'This is a sample product',
-      price: 19.99,
-      images: ['https://via.placeholder.com/150'],
-      category: 'Electronics',
-      sellerId: 'user1',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }
-  ];
 
   useEffect(() => {
     fetchProducts();
+    checkSellerVerificationStatus();
+    setupSellerSubscriptions();
+    
+    return () => {
+      console.log('LocalShop unmounted - cleaning up subscriptions');
+      unsubscribeFromAll();
+    };
   }, []);
+
+  // Check seller verification status on component mount
+  const checkSellerVerificationStatus = async () => {
+    if (user?.uid) {
+      try {
+        const verificationData = await getSellerVerificationStatus(user.uid);
+        if (verificationData) {
+          setSellerStatus(verificationData.status);
+          console.log('Current seller verification status:', verificationData.status);
+        }
+      } catch (error) {
+        console.error('Error checking seller verification status:', error);
+      }
+    }
+  };
 
   useEffect(() => {
     // Removed the setViewOnly from here to prevent automatic changes
@@ -176,42 +163,159 @@ const LocalShop: React.FC<LocalShopProps> = ({ onChangeScreen }) => {
 
   const fetchProducts = async () => {
     try {
-      // For now, use mock data instead of actual API call
-      // Uncomment this when API is ready
-      /*
-      const response = await client.graphql({
-        query: listProducts,
-        variables: {
-          filter: {
-            sellerId: { eq: user?.id },
-          },
-        },
-      });
-      setProducts(response.data.listProducts.items);
-      */
+      if (!user?.uid) {
+        console.log('No authenticated user found');
+        setProducts([]);
+        return;
+      }
+
+      // Fetch real products for the authenticated user
+      const query = `
+        query GetUserProducts($sellerId: ID!) {
+          getUserProducts(sellerId: $sellerId) {
+            id
+            name
+            description
+            price
+            images
+            category
+            sellerId
+            createdAt
+            updatedAt
+          }
+        }
+      `;
+
+      const response = await awsConfig.graphqlQuery(query, { sellerId: user.uid });
       
-      // Use mock data for now
-      setProducts(mockProducts);
-    } catch (error) {
+      if (response.data?.getUserProducts) {
+        setProducts(response.data.getUserProducts);
+      } else {
+        setProducts([]);
+      }
+    } catch (error: any) {
       console.error('Error fetching products:', error);
-      Alert.alert('Error', 'Failed to fetch products');
+      // Don't show alert for empty results, just log the error
+      if (error?.message && !error.message.includes('No products found')) {
+        Alert.alert('Error', 'Failed to fetch products');
+      }
+      setProducts([]);
     } finally {
       setLoading(false);
     }
   };
 
+  const setupSellerSubscriptions = () => {
+    if (!user?.uid) return;
+    
+    console.log(`Setting up real-time updates for seller: ${user.uid}`);
+    setLiveUpdatesEnabled(true);
+    
+    const callbacks: ProductSubscriptionCallbacks = {
+      onProductCreated: (product) => {
+        if (product.sellerId === user.uid) {
+          console.log('🔴 LIVE: Your new product was added:', product.name);
+          setProducts(prevProducts => [product, ...prevProducts]);
+          
+          Alert.alert(
+            '✅ Product Added!', 
+            `${product.name} is now live in your shop`,
+            [{ text: 'Great!' }]
+          );
+        }
+      },
+      
+      onProductUpdated: (product) => {
+        if (product.sellerId === user.uid) {
+          console.log('🟡 LIVE: Your product was updated:', product.name);
+          setProducts(prevProducts => 
+            prevProducts.map(p => 
+              p.id === product.id ? { ...p, ...product } : p
+            )
+          );
+        }
+      },
+      
+      onProductDeleted: (product) => {
+        if (product.sellerId === user.uid) {
+          console.log('🔴 LIVE: Your product was removed:', product.id);
+          setProducts(prevProducts => 
+            prevProducts.filter(p => p.id !== product.id)
+          );
+        }
+      },
+      
+      onInventoryChanged: (update) => {
+        console.log(`📦 LIVE: Inventory updated for ${update.productId}: ${update.oldInventory} → ${update.newInventory}`);
+        
+        setProducts(prevProducts => 
+          prevProducts.map(p => 
+            p.id === update.productId 
+              ? { ...p, inventory: update.newInventory }
+              : p
+          )
+        );
+        
+        // Show notification for low stock
+        if (update.newInventory < 5 && update.newInventory > 0) {
+          Alert.alert(
+            '⚠️ Low Stock Alert',
+            `${products.find(p => p.id === update.productId)?.name || 'Product'} is running low (${update.newInventory} left)`,
+            [{ text: 'OK' }]
+          );
+        }
+      },
+      
+      onError: (error) => {
+        console.error('Seller subscription error:', error);
+        setLiveUpdatesEnabled(false);
+      }
+    };
+    
+    subscribeToSellerUpdates(user.uid, callbacks);
+  };
+
   const handleAddProduct = () => {
-    // Check verification status first
+    // STRICT CHECK: Only email-verified sellers can add products
     if (sellerStatus === 'approved') {
-      // Navigate to Add Product screen
-      onChangeScreen('addproduct');
+      // Confirmed verified seller - allow product addition
+      Alert.alert(
+        '🎉 Verified Seller Access',
+        'Your email verification is complete! You have full access to add products to your local shop.',
+        [
+          {
+            text: 'Add Product Now',
+            onPress: () => onChangeScreen('addproduct')
+          },
+          {
+            text: 'Maybe Later',
+            style: 'cancel'
+          }
+        ]
+      );
     } else if (sellerStatus === 'pending') {
-      // Show warning for pending verification
+      // Pending verification - show status
       showVerificationWarning();
     } else {
-      // Show verification modal for non-verified users
-      Alert.alert('Verification Required', 'You need to complete seller verification first');
-      openVerificationModal();
+      // No verification - require email verification first
+      Alert.alert(
+        '🔒 Email Verification Required',
+        'To add products and sell on Timelapse, you must complete email verification with our admin team.\n\n' +
+        '✅ Secure verification process\n' +
+        '📧 Admin approval via email\n' +
+        '🛡️ Ensures marketplace trust\n\n' +
+        'Start your verification now?',
+        [
+          {
+            text: 'Start Verification',
+            onPress: openVerificationModal
+          },
+          {
+            text: 'Not Now',
+            style: 'cancel'
+          }
+        ]
+      );
     }
   };
 
@@ -246,20 +350,18 @@ const LocalShop: React.FC<LocalShopProps> = ({ onChangeScreen }) => {
         setSellerStatus('pending');
         setShowVerificationModal(false);
         
-        // Show confirmation to user
+        // Show comprehensive success message
         Alert.alert(
-          'Verification Submitted',
-          'Your seller verification request has been submitted. Our admin team will review it and get back to you soon.',
+          'Verification Submitted Successfully! ✅',
+          'Your seller verification request has been submitted and our admin team has been notified.\n\n' +
+          '📧 Admin email sent to: poornima.bhogi1@gmail.com\n' +
+          '⏱️ Review time: 1-2 business days\n' +
+          '📱 You\'ll receive an email notification once reviewed\n\n' +
+          'Thank you for your patience!',
           [
             {
-              text: 'OK',
-              onPress: () => {
-                // Optional additional confirmation about admin notification
-                Alert.alert(
-                  'Admin Notification',
-                  'Verification details have been sent to our admin team at poornima.bhogi1@gmail.com for review.'
-                );
-              }
+              text: 'Understood',
+              style: 'default'
             }
           ]
         );
@@ -283,7 +385,7 @@ const LocalShop: React.FC<LocalShopProps> = ({ onChangeScreen }) => {
 
   const renderProduct = ({ item }: { item: Product }) => (
     <TouchableOpacity
-      style={styles.productCard}
+      style={[styles.productCard, sellerStatus === 'approved' && styles.verifiedProductCard]}
       onPress={() => handleProductPress(item.id)}
     >
       <View style={styles.productImageContainer}>
@@ -297,11 +399,25 @@ const LocalShop: React.FC<LocalShopProps> = ({ onChangeScreen }) => {
             <Text style={{ fontSize: 40, color: '#CCCCCC' }}>📷</Text>
           </View>
         )}
+        {/* Verified Seller Badge on Product Image */}
+        {sellerStatus === 'approved' && (
+          <View style={styles.productVerifiedBadge}>
+            <Text style={styles.productVerifiedIcon}>✓</Text>
+          </View>
+        )}
       </View>
       <View style={styles.productInfo}>
-        <Text style={styles.productName}>{item.name}</Text>
+        <View style={styles.productHeader}>
+          <Text style={styles.productName}>{item.name}</Text>
+          {sellerStatus === 'approved' && (
+            <Text style={styles.verifiedLabel}>Verified</Text>
+          )}
+        </View>
         <Text style={styles.productPrice}>${item.price.toFixed(2)}</Text>
         <Text style={styles.productCategory}>{item.category}</Text>
+        {sellerStatus === 'approved' && (
+          <Text style={styles.verifiedSellerTag}>✅ From Email-Verified Seller</Text>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -310,20 +426,52 @@ const LocalShop: React.FC<LocalShopProps> = ({ onChangeScreen }) => {
     switch (sellerStatus) {
       case 'approved':
         return (
-          <View style={styles.verificationStatusContainer}>
-            <Text style={[styles.verificationStatusText, styles.verificationApproved]}>
-              ✅ Verified Seller
-            </Text>
+          <View style={[styles.verificationStatusContainer, styles.approvedStatusContainer]}>
+            <View style={styles.approvedHeader}>
+              <Text style={styles.verifiedIconLarge}>✓</Text>
+              <View style={styles.approvedTextContainer}>
+                <Text style={[styles.verificationStatusText, styles.verificationApproved]}>
+                  🎉 Verified Seller - Email Approved!
+                </Text>
+                <Text style={styles.verificationSubtext}>
+                  ✅ Verified via admin email • Full shop access granted
+                </Text>
+              </View>
+            </View>
+            <View style={styles.approvedBenefits}>
+              <Text style={styles.benefitsTitle}>You can now:</Text>
+              <Text style={styles.benefitItem}>📸 Add unlimited products</Text>
+              <Text style={styles.benefitItem}>🏪 Manage your local shop</Text>
+              <Text style={styles.benefitItem}>💰 Start selling immediately</Text>
+              <Text style={styles.benefitItem}>📊 Access seller analytics</Text>
+            </View>
           </View>
         );
       case 'pending':
         return (
           <View style={styles.verificationStatusContainer}>
             <Text style={[styles.verificationStatusText, styles.verificationPending]}>
-              ⏳ Verification Pending
+              ⏳ Verification Under Review
             </Text>
             <Text style={styles.verificationSubtext}>
-              Your application is under review. This typically takes 1-2 business days.
+              📧 Admin notified at poornima.bhogi1@gmail.com
+            </Text>
+            <Text style={styles.verificationSubtext}>
+              ⏱️ Expected review time: 1-2 business days
+            </Text>
+            <Text style={[styles.verificationSubtext, { fontSize: 12, fontStyle: 'italic' }]}>
+              You'll receive an email notification once approved
+            </Text>
+          </View>
+        );
+      case 'rejected':
+        return (
+          <View style={styles.verificationStatusContainer}>
+            <Text style={[styles.verificationStatusText, styles.verificationRejected]}>
+              ❌ Verification Needs Update
+            </Text>
+            <Text style={styles.verificationSubtext}>
+              Please review admin feedback and resubmit
             </Text>
           </View>
         );
@@ -331,7 +479,10 @@ const LocalShop: React.FC<LocalShopProps> = ({ onChangeScreen }) => {
         return (
           <View style={styles.verificationStatusContainer}>
             <Text style={[styles.verificationStatusText, styles.verificationRequired]}>
-              ⚠️ Verification Required
+              ⚠️ Verification Required for Selling
+            </Text>
+            <Text style={styles.verificationSubtext}>
+              Complete email verification to unlock shop features
             </Text>
           </View>
         );
@@ -342,8 +493,25 @@ const LocalShop: React.FC<LocalShopProps> = ({ onChangeScreen }) => {
   const showVerificationWarning = () => {
     if (sellerStatus === 'pending') {
       Alert.alert(
-        'Verification Pending',
-        'Your seller verification is still under review. You can add products once verified.'
+        'Verification Under Review ⏳',
+        'Your seller verification is currently being reviewed by our admin team.\n\n' +
+        '📧 Admin notified: poornima.bhogi1@gmail.com\n' +
+        '⏱️ Typical review time: 1-2 business days\n' +
+        '📱 You\'ll receive an email notification once approved\n\n' +
+        'Once approved, you\'ll be able to add products to your shop.',
+        [
+          {
+            text: 'View Application',
+            onPress: () => {
+              setViewOnly(true);
+              setShowVerificationModal(true);
+            }
+          },
+          {
+            text: 'OK',
+            style: 'default'
+          }
+        ]
       );
     }
   };
@@ -372,26 +540,37 @@ const LocalShop: React.FC<LocalShopProps> = ({ onChangeScreen }) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>My Local Shop</Text>
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>My Local Shop</Text>
+          {sellerStatus === 'approved' && (
+            <View style={styles.verifiedBadge}>
+              <Text style={styles.verifiedIcon}>✓</Text>
+              <Text style={styles.verifiedText}>Verified Seller</Text>
+            </View>
+          )}
+          {liveUpdatesEnabled && (
+            <View style={styles.liveStatusBadge}>
+              <View style={styles.liveIndicator} />
+              <Text style={styles.liveStatusText}>LIVE</Text>
+            </View>
+          )}
+        </View>
         <View style={styles.headerButtons}>
-          {/* Make the verification button more prominent */}
+          {/* Show verification button only for non-approved sellers */}
           {sellerStatus !== 'approved' && (
             <TouchableOpacity
               style={[styles.verifyButton, { paddingHorizontal: 16, paddingVertical: 8 }]}
               onPress={() => {
-                // Direct approach without debug dialog
                 console.log('Opening verification form directly');
-                // Reset modal state completely before showing
                 setShowVerificationModal(false);
-                // Force clean state
                 setTimeout(() => {
-                  setViewOnly(false); // Always force edit mode for direct verify button
+                  setViewOnly(false);
                   setShowVerificationModal(true);
                 }, 100);
               }}
             >
               <Text style={[styles.verifyButtonText, { fontSize: 16 }]}>
-                {sellerStatus === 'pending' ? 'View Verification' : 'Verification Form'}
+                {sellerStatus === 'pending' ? 'View Verification' : 'Get Verified'}
               </Text>
             </TouchableOpacity>
           )}
@@ -408,14 +587,31 @@ const LocalShop: React.FC<LocalShopProps> = ({ onChangeScreen }) => {
         <View style={styles.emptyState}>
           <Text style={{ fontSize: 64, color: '#CCCCCC' }}>🏪</Text>
           <Text style={styles.emptyStateText}>
-            No products yet. Start by adding your first product!
+            {sellerStatus === 'approved' 
+              ? "No products yet. Start by adding your first product!"
+              : sellerStatus === 'pending'
+              ? "Complete seller verification to start adding products to your shop."
+              : "Complete seller verification to start your local shop and add products."
+            }
           </Text>
-          <TouchableOpacity
-            style={styles.addFirstProductButton}
-            onPress={handleAddProduct}
-          >
-            <Text style={styles.addFirstProductText}>Add Your First Product</Text>
-          </TouchableOpacity>
+          {sellerStatus === 'approved' && (
+            <TouchableOpacity
+              style={styles.addFirstProductButton}
+              onPress={handleAddProduct}
+            >
+              <Text style={styles.addFirstProductText}>Add Your First Product</Text>
+            </TouchableOpacity>
+          )}
+          {sellerStatus !== 'approved' && (
+            <TouchableOpacity
+              style={[styles.addFirstProductButton, styles.verificationButton]}
+              onPress={openVerificationModal}
+            >
+              <Text style={styles.addFirstProductText}>
+                {sellerStatus === 'pending' ? 'View Verification Status' : 'Start Seller Verification'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
         <>
@@ -426,12 +622,15 @@ const LocalShop: React.FC<LocalShopProps> = ({ onChangeScreen }) => {
             contentContainerStyle={styles.productList}
           />
           
-          <TouchableOpacity
-            style={styles.floatingAddButton}
-            onPress={handleAddProduct}
-          >
-            <Text style={styles.floatingAddButtonText}>+</Text>
-          </TouchableOpacity>
+          {/* Only show add button for verified sellers */}
+          {sellerStatus === 'approved' && (
+            <TouchableOpacity
+              style={styles.floatingAddButton}
+              onPress={handleAddProduct}
+            >
+              <Text style={styles.floatingAddButtonText}>+</Text>
+            </TouchableOpacity>
+          )}
         </>
       )}
 
@@ -568,6 +767,36 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#333',
   },
+  titleContainer: {
+    flex: 1,
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E8',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  verifiedIcon: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    backgroundColor: '#4CAF50',
+    color: '#FFFFFF',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginRight: 6,
+  },
+  verifiedText: {
+    color: '#4CAF50',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   headerButtons: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -664,6 +893,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  verificationButton: {
+    backgroundColor: '#FF9800',
+  },
   verificationStatusContainer: {
     padding: 16,
     borderRadius: 8,
@@ -684,9 +916,98 @@ const styles = StyleSheet.create({
   verificationRequired: {
     color: '#F44336',
   },
+  verificationRejected: {
+    color: '#F44336',
+  },
   verificationSubtext: {
     fontSize: 14,
     color: '#666',
+  },
+  approvedStatusContainer: {
+    backgroundColor: '#F0FFF0',
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+  },
+  approvedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  verifiedIconLarge: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    backgroundColor: '#4CAF50',
+    color: '#FFFFFF',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    textAlign: 'center',
+    lineHeight: 36,
+    marginRight: 12,
+  },
+  approvedTextContainer: {
+    flex: 1,
+  },
+  approvedBenefits: {
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  benefitsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4CAF50',
+    marginBottom: 8,
+  },
+  benefitItem: {
+    fontSize: 12,
+    color: '#333',
+    marginBottom: 4,
+    paddingLeft: 8,
+  },
+  verifiedProductCard: {
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    backgroundColor: '#F8FFF8',
+  },
+  productVerifiedBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#4CAF50',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  productVerifiedIcon: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  productHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  verifiedLabel: {
+    fontSize: 10,
+    color: '#4CAF50',
+    fontWeight: '600',
+    backgroundColor: '#E8F5E8',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  verifiedSellerTag: {
+    fontSize: 10,
+    color: '#4CAF50',
+    fontWeight: '500',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   startVerificationButton: {
     backgroundColor: '#6B4EFF',
@@ -841,6 +1162,29 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Live status indicator styles
+  liveStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF4444',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  liveIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FFFFFF',
+    marginRight: 4,
+  },
+  liveStatusText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
 });
 

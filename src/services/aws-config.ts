@@ -33,6 +33,12 @@ import { ApolloClient, InMemoryCache, createHttpLink, gql } from '@apollo/client
 import { setContext } from '@apollo/client/link/context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Import AWS SES for email functionality
+import { 
+  SESClient, 
+  SendEmailCommand 
+} from '@aws-sdk/client-ses';
+
 // Configuration from environment variables
 const config = {
   region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
@@ -60,6 +66,12 @@ const s3Client = new S3Client({
   requestHandler: {
     requestTimeout: 30000,
   }
+});
+
+// Initialize SES client
+const sesClient = new SESClient({
+  region: config.region,
+  maxAttempts: 3,
 });
 
 // Storage keys
@@ -158,8 +170,7 @@ export async function signIn(username: string, password: string) {
     throw new Error('Sign in failed - no authentication result');
   } catch (error: any) {
     console.error('Sign in error:', error);
-    // Fallback to mock for development
-    return await mockSignIn(username, password);
+    throw error;
   }
 }
 
@@ -190,8 +201,7 @@ export async function signUp(username: string, password: string, email: string) 
     };
   } catch (error: any) {
     console.error('Sign up error:', error);
-    // Fallback to mock for development
-    return { success: true };
+    throw error;
   }
 }
 
@@ -208,8 +218,7 @@ export async function confirmSignUp(username: string, code: string) {
     return { success: true };
   } catch (error: any) {
     console.error('Confirm sign up error:', error);
-    // Fallback to mock for development
-    return await mockConfirmSignUp(username, code);
+    throw error;
   }
 }
 
@@ -228,7 +237,7 @@ export async function resetPassword(username: string) {
     };
   } catch (error: any) {
     console.error('Reset password error:', error);
-    return { success: true };
+    throw error;
   }
 }
 
@@ -246,7 +255,7 @@ export async function confirmResetPassword(username: string, code: string, newPa
     return { success: true };
   } catch (error: any) {
     console.error('Confirm reset password error:', error);
-    return { success: true };
+    throw error;
   }
 }
 
@@ -369,8 +378,7 @@ export async function generatePresignedUrl(fileName: string, fileType: string): 
     };
   } catch (error: any) {
     console.error('Error generating pre-signed URL:', error);
-    // Fallback to mock for development
-    return mockGeneratePresignedUrl(fileName, fileType);
+    throw error;
   }
 }
 
@@ -401,8 +409,7 @@ export async function uploadToS3(file: { uri: string; type: string; name: string
     return fileUrl;
   } catch (error: any) {
     console.error('Error uploading to S3:', error);
-    // Fallback to mock for development
-    return mockUploadToS3(file, folder);
+    throw error;
   }
 }
 
@@ -536,15 +543,477 @@ export async function saveSellerVerification(data: any, userId: string) {
   try {
     const response = await graphqlMutation(mutation, variables);
     return response.data?.saveSellerVerification || { success: true };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error saving seller verification:', error);
-    return { success: true };
+    return { success: false, error: error.message };
   }
 }
 
 export async function sendSellerVerificationEmail(data: any) {
-  console.log('Sending seller verification email:', data);
-  return { success: true };
+  try {
+    const adminEmail = 'poornima.bhogi1@gmail.com'; // Admin email for approvals
+    const currentUser = await getCurrentUser();
+    
+    const emailParams = {
+      Destination: {
+        ToAddresses: [adminEmail],
+      },
+      Message: {
+        Body: {
+          Html: {
+            Charset: 'UTF-8',
+            Data: generateSellerVerificationEmailHTML(data, currentUser),
+          },
+          Text: {
+            Charset: 'UTF-8',
+            Data: generateSellerVerificationEmailText(data, currentUser),
+          },
+        },
+        Subject: {
+          Charset: 'UTF-8',
+          Data: `New Seller Verification Request - ${data.businessName}`,
+        },
+      },
+      Source: 'noreply@timelapse.com', // This should be a verified email in SES
+    };
+
+    console.log('Sending seller verification email to admin:', adminEmail);
+    
+    try {
+      const command = new SendEmailCommand(emailParams);
+      const result = await sesClient.send(command);
+      
+      console.log('Email sent successfully:', result.MessageId);
+      return { 
+        success: true, 
+        messageId: result.MessageId 
+      };
+    } catch (sesError: any) {
+      console.error('SES Error:', sesError);
+      
+      // Log error and fail
+      console.error('Failed to send admin notification email');
+      return { success: false, error: sesError.message };
+    }
+  } catch (error: any) {
+    console.error('Error sending seller verification email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Helper function to generate HTML email content
+function generateSellerVerificationEmailHTML(data: any, user: any): string {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #6B4EFF; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; background-color: #f9f9f9; }
+            .section { margin-bottom: 20px; padding: 15px; background-color: white; border-radius: 5px; }
+            .approve-btn { background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-right: 10px; }
+            .reject-btn { background-color: #f44336; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }
+            .info-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+            .info-label { font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>New Seller Verification Request</h1>
+            </div>
+            
+            <div class="content">
+                <div class="section">
+                    <h2>User Information</h2>
+                    <div class="info-grid">
+                        <span class="info-label">User Email:</span>
+                        <span>${user?.email || 'N/A'}</span>
+                        <span class="info-label">User ID:</span>
+                        <span>${user?.uid || 'N/A'}</span>
+                        <span class="info-label">Username:</span>
+                        <span>${user?.username || 'N/A'}</span>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>Business Information</h2>
+                    <div class="info-grid">
+                        <span class="info-label">Business Name:</span>
+                        <span>${data.businessName}</span>
+                        <span class="info-label">Business Type:</span>
+                        <span>${data.businessType}</span>
+                        <span class="info-label">Tax ID:</span>
+                        <span>${data.taxId}</span>
+                        <span class="info-label">Categories:</span>
+                        <span>${data.categories?.join(', ') || 'N/A'}</span>
+                        <span class="info-label">Annual Revenue:</span>
+                        <span>$${data.estimatedAnnualRevenue || 'N/A'}</span>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>Business Address</h2>
+                    <p>
+                        ${data.businessAddress?.street}<br>
+                        ${data.businessAddress?.city}, ${data.businessAddress?.state} ${data.businessAddress?.zipCode}<br>
+                        ${data.businessAddress?.country}
+                    </p>
+                </div>
+                
+                <div class="section">
+                    <h2>Contact Information</h2>
+                    <div class="info-grid">
+                        <span class="info-label">Phone:</span>
+                        <span>${data.contactInfo?.phone}</span>
+                        <span class="info-label">Email:</span>
+                        <span>${data.contactInfo?.email}</span>
+                        <span class="info-label">Website:</span>
+                        <span>${data.contactInfo?.website || 'N/A'}</span>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>Business Description</h2>
+                    <p>${data.businessDescription}</p>
+                </div>
+                
+                <div class="section">
+                    <h2>Documents Status</h2>
+                    <ul>
+                        <li>Identity Proof: ${data.businessDocuments?.identityProof ? '✅ Uploaded' : '❌ Missing'}</li>
+                        <li>Business License: ${data.businessDocuments?.businessLicense ? '✅ Uploaded' : '❌ Missing'}</li>
+                        <li>Tax Registration: ${data.businessDocuments?.taxRegistration ? '✅ Uploaded' : '❌ Missing'}</li>
+                        <li>Bank Statement: ${data.businessDocuments?.bankStatement ? '✅ Uploaded' : '📝 Optional'}</li>
+                    </ul>
+                </div>
+                
+                <div class="section">
+                    <h2>Action Required</h2>
+                    <p>Please review the seller verification request and take appropriate action:</p>
+                    <p>
+                        <a href="mailto:noreply@timelapse.com?subject=APPROVE_SELLER_${user?.uid}&body=Seller%20${user?.uid}%20approved" class="approve-btn">Approve Seller</a>
+                        <a href="mailto:noreply@timelapse.com?subject=REJECT_SELLER_${user?.uid}&body=Seller%20${user?.uid}%20rejected" class="reject-btn">Reject Seller</a>
+                    </p>
+                    <p><small>Note: Click the buttons above to send approval/rejection response. The system will automatically process the response.</small></p>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+  `;
+}
+
+// Helper function to generate text email content
+function generateSellerVerificationEmailText(data: any, user: any): string {
+  return `
+NEW SELLER VERIFICATION REQUEST
+
+User Information:
+- Email: ${user?.email || 'N/A'}
+- User ID: ${user?.uid || 'N/A'}
+- Username: ${user?.username || 'N/A'}
+
+Business Information:
+- Business Name: ${data.businessName}
+- Business Type: ${data.businessType}
+- Tax ID: ${data.taxId}
+- Categories: ${data.categories?.join(', ') || 'N/A'}
+- Annual Revenue: $${data.estimatedAnnualRevenue || 'N/A'}
+
+Business Address:
+${data.businessAddress?.street}
+${data.businessAddress?.city}, ${data.businessAddress?.state} ${data.businessAddress?.zipCode}
+${data.businessAddress?.country}
+
+Contact Information:
+- Phone: ${data.contactInfo?.phone}
+- Email: ${data.contactInfo?.email}
+- Website: ${data.contactInfo?.website || 'N/A'}
+
+Business Description:
+${data.businessDescription}
+
+Documents Status:
+- Identity Proof: ${data.businessDocuments?.identityProof ? 'Uploaded' : 'Missing'}
+- Business License: ${data.businessDocuments?.businessLicense ? 'Uploaded' : 'Missing'}
+- Tax Registration: ${data.businessDocuments?.taxRegistration ? 'Uploaded' : 'Missing'}
+- Bank Statement: ${data.businessDocuments?.bankStatement ? 'Uploaded' : 'Optional'}
+
+ACTION REQUIRED:
+Please review this seller verification request and respond with approval or rejection.
+
+To approve: Reply with subject "APPROVE_SELLER_${user?.uid}"
+To reject: Reply with subject "REJECT_SELLER_${user?.uid}"
+  `;
+}
+
+// Function to update seller verification status
+export async function updateSellerVerificationStatus(userId: string, status: 'approved' | 'rejected', reviewNotes?: string) {
+  const mutation = `
+    mutation UpdateSellerVerificationStatus($input: UpdateSellerVerificationStatusInput!) {
+      updateSellerVerificationStatus(input: $input) {
+        success
+        message
+      }
+    }
+  `;
+
+  const variables = {
+    input: {
+      userId,
+      status,
+      reviewNotes,
+      updatedAt: new Date().toISOString()
+    }
+  };
+
+  try {
+    const response = await graphqlMutation(mutation, variables);
+    return response.data?.updateSellerVerificationStatus || { success: true };
+  } catch (error: any) {
+    console.error('Error updating seller verification status:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Function to get seller verification status
+export async function getSellerVerificationStatus(userId: string) {
+  const query = `
+    query GetSellerVerificationStatus($userId: ID!) {
+      getSellerVerification(userId: $userId) {
+        id
+        userId
+        status
+        reviewNotes
+        createdAt
+        updatedAt
+        businessName
+        businessType
+      }
+    }
+  `;
+
+  try {
+    const response = await graphqlQuery(query, { userId });
+    return response.data?.getSellerVerification || null;
+  } catch (error) {
+    console.error('Error getting seller verification status:', error);
+    return null;
+  }
+}
+
+// Function to send approval/rejection notification to seller
+export async function sendSellerStatusNotification(userId: string, status: 'approved' | 'rejected', reviewNotes?: string) {
+  try {
+    // Get user details
+    const userQuery = `
+      query GetUser($userId: ID!) {
+        getUser(userId: $userId) {
+          id
+          email
+          username
+        }
+      }
+    `;
+    
+    const userResponse = await graphqlQuery(userQuery, { userId });
+    const userData = userResponse.data?.getUser;
+    
+    if (!userData?.email) {
+      console.error('User email not found for notification');
+      return { success: false, error: 'User email not found' };
+    }
+
+    const emailParams = {
+      Destination: {
+        ToAddresses: [userData.email],
+      },
+      Message: {
+        Body: {
+          Html: {
+            Charset: 'UTF-8',
+            Data: generateSellerStatusNotificationHTML(status, userData, reviewNotes),
+          },
+          Text: {
+            Charset: 'UTF-8',
+            Data: generateSellerStatusNotificationText(status, userData, reviewNotes),
+          },
+        },
+        Subject: {
+          Charset: 'UTF-8',
+          Data: `Seller Verification ${status === 'approved' ? 'Approved' : 'Update'} - Timelapse`,
+        },
+      },
+      Source: 'noreply@timelapse.com',
+    };
+
+    try {
+      const command = new SendEmailCommand(emailParams);
+      const result = await sesClient.send(command);
+      
+      console.log('Seller notification sent successfully:', result.MessageId);
+      return { 
+        success: true, 
+        messageId: result.MessageId 
+      };
+    } catch (sesError: any) {
+      console.error('SES Error for seller notification:', sesError);
+      
+             // Log error and fail
+       console.error('Failed to send seller notification email');
+       return { success: false, error: sesError.message };
+    }
+  } catch (error: any) {
+    console.error('Error sending seller status notification:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Helper function to generate seller notification HTML
+function generateSellerStatusNotificationHTML(status: 'approved' | 'rejected', userData: any, reviewNotes?: string): string {
+  const isApproved = status === 'approved';
+  const statusColor = isApproved ? '#4CAF50' : '#f44336';
+  const statusText = isApproved ? 'Approved' : 'Needs Review';
+  
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: ${statusColor}; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; background-color: #f9f9f9; }
+            .section { margin-bottom: 20px; padding: 15px; background-color: white; border-radius: 5px; }
+            .cta-button { background-color: #6B4EFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }
+            .success-icon { font-size: 48px; text-align: center; margin-bottom: 20px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Seller Verification ${statusText}</h1>
+            </div>
+            
+            <div class="content">
+                ${isApproved ? `
+                <div class="success-icon">🎉</div>
+                <div class="section">
+                    <h2>Congratulations!</h2>
+                    <p>Hello ${userData.username || userData.email},</p>
+                    <p>Great news! Your seller verification has been approved. You can now start adding products to your local shop and begin selling on Timelapse.</p>
+                </div>
+                
+                <div class="section">
+                    <h2>Next Steps</h2>
+                    <ul>
+                        <li>🏪 Set up your shop profile</li>
+                        <li>📸 Add your first products with photos</li>
+                        <li>💼 Start managing your inventory</li>
+                        <li>📊 Track your sales and analytics</li>
+                    </ul>
+                </div>
+                
+                <div class="section" style="text-align: center;">
+                    <p>Ready to get started?</p>
+                    <a href="#" class="cta-button">Access Your Shop</a>
+                </div>
+                ` : `
+                <div class="section">
+                    <h2>Update Required</h2>
+                    <p>Hello ${userData.username || userData.email},</p>
+                    <p>Thank you for submitting your seller verification. We need some additional information or corrections before we can approve your application.</p>
+                    ${reviewNotes ? `
+                    <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                        <h3>Review Notes:</h3>
+                        <p>${reviewNotes}</p>
+                    </div>
+                    ` : ''}
+                </div>
+                
+                <div class="section" style="text-align: center;">
+                    <p>Please update your information and resubmit:</p>
+                    <a href="#" class="cta-button">Update Application</a>
+                </div>
+                `}
+                
+                <div class="section">
+                    <p><small>If you have any questions, please contact our support team.</small></p>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+  `;
+}
+
+// Helper function to generate seller notification text
+function generateSellerStatusNotificationText(status: 'approved' | 'rejected', userData: any, reviewNotes?: string): string {
+  const isApproved = status === 'approved';
+  
+  return `
+SELLER VERIFICATION ${isApproved ? 'APPROVED' : 'UPDATE REQUIRED'}
+
+Hello ${userData.username || userData.email},
+
+${isApproved ? `
+Congratulations! Your seller verification has been approved.
+
+You can now:
+- Set up your shop profile
+- Add products with photos  
+- Start managing your inventory
+- Track your sales and analytics
+
+Access your shop through the Timelapse app to get started.
+` : `
+Thank you for submitting your seller verification. We need some additional information before we can approve your application.
+
+${reviewNotes ? `Review Notes: ${reviewNotes}` : ''}
+
+Please update your information and resubmit through the app.
+`}
+
+If you have any questions, please contact our support team.
+
+Best regards,
+The Timelapse Team
+  `;
+}
+
+// Development helper function to simulate admin approval/rejection
+export async function simulateAdminAction(userId: string, action: 'approve' | 'reject', reviewNotes?: string) {
+  try {
+    console.log(`Simulating admin ${action} for user ${userId}`);
+    
+    const status = action === 'approve' ? 'approved' : 'rejected';
+    
+    // Update the verification status
+    const updateResult = await updateSellerVerificationStatus(userId, status, reviewNotes);
+    
+    if (updateResult.success) {
+      // Send notification to seller
+      const notificationResult = await sendSellerStatusNotification(userId, status, reviewNotes);
+      
+      console.log(`Admin ${action} simulation completed:`, {
+        statusUpdate: updateResult.success,
+        notificationSent: notificationResult.success
+      });
+      
+      return {
+        success: true,
+        message: `Successfully ${action}d seller and sent notification`
+      };
+    }
+    
+    return { success: false, message: 'Failed to update status' };
+  } catch (error: any) {
+    console.error('Error simulating admin action:', error);
+    return { success: false, error: error.message };
+  }
 }
 
 // Timelapse interaction functions
@@ -604,64 +1073,7 @@ export async function deleteTimelapseItem(timelapseId: string) {
   }
 }
 
-// Mock functions for development fallback
-async function mockSignIn(username: string, password: string) {
-  console.log('Mock signIn called with:', username);
-  
-  const mockUser = {
-    uid: 'mock-user-123',
-    username: username,
-    email: `${username}@example.com`
-  };
-  
-  await AsyncStorage.setItem(USER_KEY, JSON.stringify(mockUser));
-  await AsyncStorage.setItem(ID_TOKEN_KEY, 'mock-id-token');
-  await AsyncStorage.setItem(REFRESH_TOKEN_KEY, 'mock-refresh-token');
-  
-  return { 
-    user: mockUser,
-    isSignedIn: true
-  };
-}
 
-async function mockConfirmSignUp(username: string, code: string) {
-  console.log('Mock confirmSignUp called with:', username, code);
-  
-  const mockUser = {
-    uid: 'mock-user-123',
-    username: username,
-    email: `${username}@example.com`
-  };
-  
-  await AsyncStorage.setItem(USER_KEY, JSON.stringify(mockUser));
-  await AsyncStorage.setItem(ID_TOKEN_KEY, 'mock-id-token');
-  await AsyncStorage.setItem(REFRESH_TOKEN_KEY, 'mock-refresh-token');
-  
-  return { 
-    user: mockUser,
-    success: true 
-  };
-}
-
-function mockGeneratePresignedUrl(fileName: string, fileType: string): PresignedUrlResponse {
-  const mockKey = `uploads/mock-user-123/${Date.now()}-${fileName}`;
-  
-  return {
-    uploadUrl: `https://mock-upload.example.com/${mockKey}`,
-    fileUrl: `https://mock-cdn.example.com/${mockKey}`,
-    key: mockKey
-  };
-}
-
-async function mockUploadToS3(file: { uri: string; type: string; name: string }, folder: string): Promise<string> {
-  console.log('Mock uploadToS3 called with:', file.name, folder);
-  
-  // Simulate upload delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  const mockUrl = `https://mock-cdn.example.com/${folder}/${Date.now()}-${file.name}`;
-  return mockUrl;
-}
 
 // Default export
 const awsConfig = {
@@ -682,6 +1094,10 @@ const awsConfig = {
   createFeaturePost,
   saveSellerVerification,
   sendSellerVerificationEmail,
+  updateSellerVerificationStatus,
+  getSellerVerificationStatus,
+  sendSellerStatusNotification,
+  simulateAdminAction,
   likeTimelapseItem,
   unlikeTimelapseItem,
   deleteTimelapseItem,

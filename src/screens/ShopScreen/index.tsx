@@ -9,10 +9,19 @@ import {
   FlatList,
   Platform,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { styles } from './styles';
 import { ShopScreenProps, ProductData } from '../../types/interfaces';
 import BottomTabBar from '../../components/common/BottomTabBar';
+import { getAllProducts, Product } from '../../services/productService';
+import { 
+  subscribeToFollowedSellersUpdates,
+  subscribeToCategoryUpdates,
+  unsubscribeFromAll,
+  ProductSubscriptionCallbacks 
+} from '../../services/subscriptionService';
+import { useAuth } from '../../contexts/AuthContext';
 
 const ShopScreen: React.FC<ShopScreenProps> = ({
   onChangeScreen,
@@ -23,15 +32,182 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
   cartItems,
   cartCount,
 }) => {
+  const { user } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const screenWidth = Dimensions.get('window').width;
   
   useEffect(() => {
     console.log('ShopScreen mounted');
+    fetchAllProducts();
+    setupRealtimeUpdates();
+    
     return () => {
-      console.log('ShopScreen unmounted');
+      console.log('ShopScreen unmounted - cleaning up subscriptions');
+      unsubscribeFromAll();
     };
   }, []);
+
+  // Set up category-specific subscriptions when category changes
+  useEffect(() => {
+    if (selectedCategory !== 'all') {
+      setupCategorySubscription(selectedCategory);
+    }
+  }, [selectedCategory]);
+
+  const fetchAllProducts = async () => {
+    try {
+      setLoading(true);
+      console.log('Global Shop: Fetching products from all verified sellers...');
+      
+      const allProducts = await getAllProducts();
+      console.log(`Found ${allProducts.length} products from verified sellers`);
+      
+      // Convert Product interface to ProductData interface for compatibility
+      const convertedProducts = allProducts.map(product => ({
+        id: product.id,
+        title: product.name,
+        price: product.price,
+        image: product.images[0] || 'https://via.placeholder.com/150',
+        category: product.category,
+        isNew: new Date(product.createdAt) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // New if created within 7 days
+        sellerId: product.sellerId,
+        sellerName: product.sellerName,
+        sellerVerified: product.sellerVerified,
+        description: product.description
+      }));
+      
+      setProducts(convertedProducts);
+      
+    } catch (error) {
+      console.error('Error fetching marketplace products:', error);
+      Alert.alert(
+        'Marketplace Connection',
+        'Unable to load marketplace products at this time. Please try again later.',
+        [{ text: 'OK' }]
+      );
+      // Set empty array on error
+      setProducts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const setupRealtimeUpdates = () => {
+    console.log('Setting up real-time marketplace updates...');
+    
+    const callbacks: ProductSubscriptionCallbacks = {
+      onProductCreated: (product) => {
+        console.log('🔴 PERSONALIZED: New product from followed seller:', product.name);
+        
+        // Convert to ProductData format and add to products
+        const newProduct = {
+          id: product.id,
+          title: product.name,
+          price: product.price,
+          image: product.images[0] || 'https://via.placeholder.com/150',
+          category: product.category,
+          isNew: true, // Mark as new for highlighting
+          sellerId: product.sellerId,
+          sellerName: product.sellerName,
+          sellerVerified: true, // Only verified sellers can create products
+          description: product.description
+        };
+        
+        setProducts(prevProducts => [newProduct, ...prevProducts]);
+        
+        // Show personalized notification
+        Alert.alert(
+          '💫 New from Followed Seller!', 
+          `${product.name} just added by a seller you follow`,
+          [{ text: 'Check it out!' }]
+        );
+      },
+      
+      onProductUpdated: (product) => {
+        console.log('🟡 PERSONALIZED: Product updated by followed seller:', product.name);
+        
+        setProducts(prevProducts => 
+          prevProducts.map(p => 
+            p.id === product.id 
+              ? {
+                  ...p,
+                  title: product.name,
+                  price: product.price,
+                  image: product.images[0] || p.image,
+                  category: product.category,
+                  description: product.description
+                }
+              : p
+          )
+        );
+      },
+      
+      onProductDeleted: (product) => {
+        console.log('🔴 PERSONALIZED: Product removed by followed seller:', product.id);
+        
+        setProducts(prevProducts => 
+          prevProducts.filter(p => p.id !== product.id)
+        );
+      },
+      
+      onInventoryChanged: (update) => {
+        console.log(`📦 PERSONALIZED: Inventory updated by followed seller for ${update.productId}: ${update.oldInventory} → ${update.newInventory}`);
+        
+        // Update product inventory in real-time
+        setProducts(prevProducts => 
+          prevProducts.map(p => 
+            p.id === update.productId 
+              ? { ...p, inventory: update.newInventory }
+              : p
+          )
+        );
+      },
+      
+      onError: (error) => {
+        console.error('Subscription error:', error);
+        // Don't show error to user unless it's critical
+      }
+    };
+    
+    if (user?.uid) {
+      subscribeToFollowedSellersUpdates(user.uid, callbacks);
+    }
+  };
+
+  const setupCategorySubscription = (category: string) => {
+    console.log(`Setting up real-time updates for category: ${category}`);
+    
+    const callbacks: ProductSubscriptionCallbacks = {
+      onProductUpdated: (product) => {
+        console.log(`🏷️ LIVE: ${category} product updated:`, product.name);
+        
+        // Only update if the product matches current filter
+        if (product.category === category) {
+          setProducts(prevProducts => 
+            prevProducts.map(p => 
+              p.id === product.id 
+                ? {
+                    ...p,
+                    title: product.name,
+                    price: product.price,
+                    image: product.images[0] || p.image,
+                    description: product.description
+                  }
+                : p
+            )
+          );
+        }
+      },
+      
+      onError: (error) => {
+        console.error(`Category ${category} subscription error:`, error);
+      }
+    };
+    
+    subscribeToCategoryUpdates(category, callbacks);
+  };
 
   const categories = [
     { id: 'all', name: 'All' },
@@ -41,56 +217,7 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
     { id: 'supplements', name: 'Supplements' },
   ];
 
-  const products: ProductData[] = [
-    {
-      id: '1',
-      title: 'Athletic T-Shirt',
-      price: 29.99,
-      image: 'https://via.placeholder.com/150',
-      category: 'clothing',
-      isNew: true,
-    },
-    {
-      id: '2',
-      title: 'Running Shoes',
-      price: 89.99,
-      image: 'https://via.placeholder.com/150',
-      category: 'clothing',
-      isNew: false,
-    },
-    {
-      id: '3',
-      title: 'Yoga Mat',
-      price: 39.99,
-      image: 'https://via.placeholder.com/150',
-      category: 'equipment',
-      isNew: false,
-    },
-    {
-      id: '4',
-      title: 'Protein Powder',
-      price: 49.99,
-      image: 'https://via.placeholder.com/150',
-      category: 'nutrition',
-      isNew: true,
-    },
-    {
-      id: '5',
-      title: 'Dumbbells Set',
-      price: 119.99,
-      image: 'https://via.placeholder.com/150',
-      category: 'equipment',
-      isNew: false,
-    },
-    {
-      id: '6',
-      title: 'Smart Watch',
-      price: 199.99,
-      image: 'https://via.placeholder.com/150',
-      category: 'equipment',
-      isNew: true,
-    },
-  ];
+  // Products are now fetched from all verified sellers via getAllProducts()
 
   const isInWishlist = (productId: string): boolean => {
     return wishlistItems.some(item => item.id === productId);
@@ -125,39 +252,100 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
     </TouchableOpacity>
   );
 
-  const renderProductCard = ({ item }: { item: ProductData }) => {
+  const renderProductCard = ({ item }: { item: any }) => {
     const quantity = getProductQuantity(item.id);
+    const isOutOfStock = item.inventory === 0;
+    const isLowStock = item.inventory > 0 && item.inventory < 5;
     
     return (
-      <View style={styles.productCard}>
-        {item.isNew && <View style={styles.newBadge}><Text style={styles.newBadgeText}>NEW</Text></View>}
-        <Image source={{ uri: item.image }} style={styles.productImage} />
+      <View style={[
+        styles.productCard, 
+        item.sellerVerified && styles.verifiedSellerProduct,
+        item.isNew && styles.newProductHighlight
+      ]}>
+        {/* Live Update Badges */}
+        {item.isNew && (
+          <View style={styles.newBadge}>
+            <Text style={styles.newBadgeText}>🔴 LIVE NEW!</Text>
+          </View>
+        )}
+        
+        {/* Verified Seller Badge */}
+        {item.sellerVerified && (
+          <View style={styles.verifiedBadge}>
+            <Text style={styles.verifiedBadgeText}>✓ Verified</Text>
+          </View>
+        )}
+        
+        {/* Real-time Inventory Status */}
+        {item.inventory !== undefined && (
+          <View style={[
+            styles.inventoryBadge,
+            isOutOfStock ? styles.outOfStockBadge : 
+            isLowStock ? styles.lowStockBadge : styles.inStockBadge
+          ]}>
+            <Text style={styles.inventoryText}>
+              {isOutOfStock ? '❌ OUT OF STOCK' : 
+               isLowStock ? `⚠️ ${item.inventory} LEFT` : '✅ IN STOCK'}
+            </Text>
+          </View>
+        )}
+        
+        <Image source={{ uri: item.image }} style={[
+          styles.productImage,
+          isOutOfStock && styles.outOfStockImage
+        ]} />
+        
         <View style={styles.productDetails}>
-          <Text style={styles.productTitle}>{item.title}</Text>
-          <Text style={styles.productPrice}>${item.price}</Text>
+          <Text style={[
+            styles.productTitle,
+            isOutOfStock && styles.outOfStockText
+          ]}>
+            {item.title}
+          </Text>
+          <Text style={[
+            styles.productPrice,
+            isOutOfStock && styles.outOfStockText
+          ]}>
+            ${item.price}
+          </Text>
+          
+                  {/* Show seller name for verified sellers */}
+        {item.sellerVerified && item.sellerName && (
+          <Text style={styles.sellerName}>By: {item.sellerName}</Text>
+        )}
+          
           <View style={styles.productActions}>
             {quantity > 0 ? (
               <View style={styles.quantityContainer}>
                 <TouchableOpacity
-                  style={styles.quantityButton}
-                  onPress={() => onRemoveFromCart(item)}
+                  style={[styles.quantityButton, isOutOfStock && styles.disabledButton]}
+                  onPress={() => !isOutOfStock && onRemoveFromCart(item)}
+                  disabled={isOutOfStock}
                 >
                   <Text style={styles.quantityButtonText}>-</Text>
                 </TouchableOpacity>
                 <Text style={styles.quantityText}>{quantity}</Text>
                 <TouchableOpacity
-                  style={styles.quantityButton}
-                  onPress={() => onAddToCart(item)}
+                  style={[styles.quantityButton, isOutOfStock && styles.disabledButton]}
+                  onPress={() => !isOutOfStock && onAddToCart(item)}
+                  disabled={isOutOfStock}
                 >
                   <Text style={styles.quantityButtonText}>+</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <TouchableOpacity
-                style={styles.addToCartButton}
-                onPress={() => onAddToCart(item)}
+                style={[
+                  styles.addToCartButton, 
+                  isOutOfStock && styles.disabledButton
+                ]}
+                onPress={() => !isOutOfStock && onAddToCart(item)}
+                disabled={isOutOfStock}
               >
-                <Text style={styles.addToCartButtonText}>Add to Cart</Text>
+                <Text style={styles.addToCartButtonText}>
+                  {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
+                </Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
@@ -175,13 +363,33 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
     );
   };
 
+  const renderEmptyMarketplace = () => (
+    <View style={styles.emptyMarketplace}>
+      <Text style={styles.emptyMarketplaceIcon}>🏪</Text>
+      <Text style={styles.emptyMarketplaceTitle}>Personalized Marketplace</Text>
+      <Text style={styles.emptyMarketplaceText}>
+        Welcome to your personalized shop! This marketplace shows products from sellers you follow.
+      </Text>
+      <View style={styles.marketplaceInfo}>
+        <Text style={styles.marketplaceInfoTitle}>How it works:</Text>
+        <Text style={styles.marketplaceInfoItem}>👥 Follow sellers you're interested in</Text>
+        <Text style={styles.marketplaceInfoItem}>📱 Get live updates when they add products</Text>
+        <Text style={styles.marketplaceInfoItem}>📦 See real-time inventory changes</Text>
+        <Text style={styles.marketplaceInfoItem}>🎯 Only see relevant products you care about</Text>
+      </View>
+      <Text style={styles.emptyMarketplaceFooter}>
+        Visit seller profiles and follow them to see their products here!
+      </Text>
+    </View>
+  );
+
   return (
     <SafeAreaView style={[
       styles.container,
       Platform.OS === 'android' && styles.androidSafeTop
     ]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Shop</Text>
+        <Text style={styles.headerTitle}>Following</Text>
         <View style={styles.headerIcons}>
           <TouchableOpacity 
             style={styles.iconButton}
@@ -219,15 +427,23 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
         </ScrollView>
       </View>
 
-      <FlatList
-        data={filteredProducts}
-        renderItem={renderProductCard}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        contentContainerStyle={styles.productsContainer}
-        showsVerticalScrollIndicator={false}
-        ListFooterComponent={<View style={Platform.OS === 'ios' ? styles.iosSpacer : styles.bottomNavSpacer} />}
-      />
+      {loading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontSize: 18, color: '#666' }}>Loading marketplace...</Text>
+        </View>
+      ) : filteredProducts.length > 0 ? (
+        <FlatList
+          data={filteredProducts}
+          renderItem={renderProductCard}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+          contentContainerStyle={styles.productsContainer}
+          showsVerticalScrollIndicator={false}
+          ListFooterComponent={<View style={Platform.OS === 'ios' ? styles.iosSpacer : styles.bottomNavSpacer} />}
+        />
+      ) : (
+        renderEmptyMarketplace()
+      )}
       
       <BottomTabBar currentScreen="shop" onChangeScreen={onChangeScreen} />
     </SafeAreaView>

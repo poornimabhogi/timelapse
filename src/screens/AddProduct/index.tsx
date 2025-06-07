@@ -14,12 +14,16 @@ import {
 } from 'react-native';
 import { useAuth } from '../../contexts/AuthContext';
 import BottomTabBar from '../../components/common/BottomTabBar';
+import { uploadToS3 } from '../../utils/s3Upload';
+import { createProduct } from '../../services/productService';
+import { launchImageLibrary, MediaType } from 'react-native-image-picker';
 
 interface ProductFormData {
   name: string;
   description: string;
   price: string;
   category: string;
+  inventory: string;
   images: string[];
 }
 
@@ -34,21 +38,63 @@ const AddProduct: React.FC<AddProductProps> = ({ onChangeScreen }) => {
     description: '',
     price: '',
     category: '',
+    inventory: '0',
     images: [],
   });
   const [loading, setLoading] = useState(false);
+  const [uploadingImages, setUploadingImages] = useState(false);
 
   const pickImage = async () => {
     try {
-      // Mock image picking functionality
-      Alert.alert('Image Picker', 'This would open the image picker');
-      // For demo purposes, add a placeholder image
-      setFormData(prev => ({
-        ...prev,
-        images: [...prev.images, 'https://via.placeholder.com/100'],
-      }));
+      const options = {
+        mediaType: 'photo' as MediaType,
+        includeBase64: false,
+        maxHeight: 2000,
+        maxWidth: 2000,
+      };
+
+      launchImageLibrary(options, (response) => {
+        if (response.didCancel || response.errorMessage) {
+          console.log('Image picker cancelled or error:', response.errorMessage);
+          return;
+        }
+
+        if (response.assets && response.assets[0]) {
+          setUploadingImages(true);
+          
+          const selectedImage = response.assets[0];
+          console.log('Selected image:', selectedImage.uri);
+          
+          // Upload to S3
+          uploadToS3(
+            {
+              uri: selectedImage.uri || '',
+              type: selectedImage.type || 'image/jpeg',
+              name: `product-image-${Date.now()}.jpg`
+            },
+            'products'
+          ).then((s3Url) => {
+            console.log('Image uploaded to S3:', s3Url);
+            
+            // Add S3 URL to form data
+            setFormData(prev => ({
+              ...prev,
+              images: [...prev.images, s3Url],
+            }));
+            
+            Alert.alert('✅ Upload Successful', 'Image uploaded to S3 successfully!');
+            setUploadingImages(false);
+          }).catch((uploadError) => {
+            console.error('S3 upload error:', uploadError);
+            Alert.alert('Upload Error', 'Failed to upload image. Please try again.');
+            setUploadingImages(false);
+          });
+        }
+      });
     } catch (error) {
+      console.error('Image picker error:', error);
       Alert.alert('Error', 'Failed to pick image');
+      setUploadingImages(false);
     }
   };
 
@@ -71,27 +117,68 @@ const AddProduct: React.FC<AddProductProps> = ({ onChangeScreen }) => {
       return;
     }
 
+    const price = parseFloat(formData.price);
+    const inventory = parseInt(formData.inventory) || 0;
+    
+    if (isNaN(price) || price <= 0) {
+      Alert.alert('Error', 'Please enter a valid price');
+      return;
+    }
+
+    if (!user?.uid) {
+      Alert.alert('Error', 'You must be logged in to add products');
+      return;
+    }
+
     setLoading(true);
     try {
-      // Mock API call to create product
-      console.log('Creating product:', {
+      console.log('Creating product with S3 images:', {
         name: formData.name,
         description: formData.description,
-        price: parseFloat(formData.price),
+        price: price,
         category: formData.category,
-        images: formData.images,
-        sellerId: user ? 'current-user' : 'unknown',
+        inventory: inventory,
+        images: formData.images, // These are now S3 URLs!
       });
       
-      // Simulate API delay
-      setTimeout(() => {
-        Alert.alert('Success', 'Product added successfully');
-        onChangeScreen('localshop');
-        setLoading(false);
-      }, 1000);
+      // Create product using real service
+      const newProduct = await createProduct({
+        name: formData.name,
+        description: formData.description,
+        price: price,
+        images: formData.images, // S3 URLs
+        category: formData.category,
+        inventory: inventory
+      });
+      
+      if (newProduct) {
+        Alert.alert(
+          '🎉 Product Added Successfully!', 
+          `${formData.name} has been added to your shop with images stored in S3.`,
+          [
+            {
+              text: 'View Shop',
+              onPress: () => onChangeScreen('localshop')
+            }
+          ]
+        );
+        
+        // Reset form
+        setFormData({
+          name: '',
+          description: '',
+          price: '',
+          category: '',
+          inventory: '0',
+          images: [],
+        });
+      } else {
+        throw new Error('Failed to create product');
+      }
     } catch (error) {
       console.error('Error creating product:', error);
-      Alert.alert('Error', 'Failed to add product');
+      Alert.alert('Error', 'Failed to add product. Please try again.');
+    } finally {
       setLoading(false);
     }
   };
@@ -150,6 +237,17 @@ const AddProduct: React.FC<AddProductProps> = ({ onChangeScreen }) => {
               value={formData.category}
               onChangeText={(text) => setFormData(prev => ({ ...prev, category: text }))}
               placeholder="Enter product category"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Initial Inventory</Text>
+            <TextInput
+              style={styles.input}
+              value={formData.inventory}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, inventory: text }))}
+              placeholder="Enter initial stock quantity"
+              keyboardType="numeric"
             />
           </View>
 
