@@ -77,10 +77,10 @@ const AddProduct: React.FC<AddProductProps> = ({ onChangeScreen }) => {
             console.log('Image uploaded to S3:', s3Url);
             
             // Add S3 URL to form data
-            setFormData(prev => ({
-              ...prev,
+      setFormData(prev => ({
+        ...prev,
               images: [...prev.images, s3Url],
-            }));
+      }));
             
             Alert.alert('✅ Upload Successful', 'Image uploaded to S3 successfully!');
             setUploadingImages(false);

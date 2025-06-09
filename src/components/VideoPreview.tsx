@@ -9,7 +9,7 @@ import {
   SafeAreaView,
   Modal,
 } from 'react-native';
-import Video from 'react-native-video';
+import Video, { VideoRef } from 'react-native-video';
 
 const { width, height } = Dimensions.get('window');
 
@@ -28,7 +28,7 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
   onProcessVideo,
   maxDuration = 60, // Default max is 60 seconds (1 minute)
 }) => {
-  const videoRef = useRef<Video>(null);
+  const videoRef = useRef<VideoRef>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);

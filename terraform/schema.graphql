@@ -242,18 +242,16 @@ type CommentFailure {
   reason: String
 }
 
-extend type Subscription {
+type Subscription {
   onCreateTimelapseItem(userId: ID): TimelapseItem
     @aws_subscribe(mutations: ["createTimelapseItem"])
   
-  # Add missing subscriptions for timelapses
   onUpdateTimelapseItem(id: ID): TimelapseItem
     @aws_subscribe(mutations: ["updateTimelapseItem"])
   
   onDeleteTimelapseItem(id: ID): TimelapseItem
     @aws_subscribe(mutations: ["deleteTimelapseItem"])
   
-  # For social features
   onCreateComment(postId: ID): Comment
     @aws_subscribe(mutations: ["createComment"])
   
@@ -262,39 +260,6 @@ extend type Subscription {
     
   onCreatePost(authorId: ID): Post
     @aws_subscribe(mutations: ["createPost"])
-    
-  # For seller verification
-  onUpdateSellerVerification(userId: ID): SellerVerification
-    @aws_subscribe(mutations: ["saveSellerVerification"])
-  
-  # Product subscriptions for live inventory updates
-  onCreateProduct: Product
-    @aws_subscribe(mutations: ["createProduct"])
-  
-  onUpdateProduct(id: ID): Product
-    @aws_subscribe(mutations: ["updateProduct"])
-  
-  onDeleteProduct(id: ID): Product
-    @aws_subscribe(mutations: ["deleteProduct"])
-  
-  # Category-specific product updates
-  onProductsByCategory(category: String!): Product
-    @aws_subscribe(mutations: ["createProduct", "updateProduct"])
-  
-  # Seller-specific product updates for Local Shop
-  onSellerProducts(sellerId: ID!): Product
-    @aws_subscribe(mutations: ["createProduct", "updateProduct", "deleteProduct"])
-  
-  # Following-based subscriptions for personalized updates
-  onFollowedSellerProducts(followerId: ID!): Product
-    @aws_subscribe(mutations: ["createProduct", "updateProduct", "deleteProduct"])
-  
-  onFollowedSellerInventory(followerId: ID!): InventoryUpdate
-    @aws_subscribe(mutations: ["updateProductInventory"])
-  
-  # Inventory-specific updates
-  onInventoryUpdate(productId: ID): InventoryUpdate
-    @aws_subscribe(mutations: ["updateProductInventory"])
 }
 
 # Update schema definition to include Subscription

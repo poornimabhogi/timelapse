@@ -5,7 +5,7 @@ import awsConfig from '../services/aws-config';
 // Client instance for potential future use
 const client = awsConfig;
 // Get the current user globally to avoid repeated fetches
-let userAuthInfo: { uid: string } | null = null;
+let userAuthInfo: { isSignedIn: boolean; user: any; } | null = null;
 
 // Get the current user's ID - initialize async
 const initCurrentUser = async () => {
@@ -59,15 +59,15 @@ export const uploadToS3 = async (
     console.log('File URI:', file.uri.substring(0, 30) + '...');
     
     // Get current user ID - require authentication for production uploads
-    let userId = userAuthInfo?.uid;
+    let userId = userAuthInfo?.user?.uid;
     try {
       // If we don't have the user yet, try to get it
       if (!userAuthInfo) {
         const currentUser = await awsConfig.getCurrentUser();
-        if (!currentUser || !currentUser.uid) {
+        if (!currentUser || !currentUser.user?.uid) {
           throw new Error('Authentication required for file uploads');
         }
-        userId = currentUser.uid;
+        userId = currentUser.user.uid;
         console.log('User ID for upload:', userId);
       }
       

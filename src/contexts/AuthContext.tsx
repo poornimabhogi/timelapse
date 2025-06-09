@@ -95,7 +95,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // Add timeout to prevent indefinite loading
       const authCheckPromise = (async () => {
-        const currentUser = await awsConfig.getCurrentUser() as { 
+        const authResult = await awsConfig.getCurrentUser();
+        if (!authResult || !authResult.user) {
+          throw new Error('No authenticated user');
+        }
+        const currentUser = authResult.user as { 
           uid: string; 
           username: string; 
           email: string;
@@ -190,13 +194,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (result.isSignedIn) {
         // Fetch user attributes after successful sign in
-        const currentUser = await awsConfig.getCurrentUser() as { 
-          uid: string; 
-          username: string; 
-          email: string;
-          attributes?: Record<string, any>;
-          userId?: string; 
-        };
+        const authResult = await awsConfig.getCurrentUser();
+        if (!authResult || !authResult.user) {
+          throw new Error('No authenticated user');
+        }
+        const currentUser = authResult.user;
         const attributes = currentUser.attributes || {};
         
         // Ensure we have a valid username

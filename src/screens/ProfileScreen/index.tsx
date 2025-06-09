@@ -25,7 +25,7 @@ import { styles } from './styles';
 import { launchCamera, launchImageLibrary, ImagePickerResponse, Asset } from 'react-native-image-picker';
 import { uploadToS3 } from '../../utils/s3Upload';
 import { useAuth } from '../../contexts/AuthContext';
-import awsConfig from '../../services/aws-config';
+import awsConfig from "../../services/aws-config";
 import { gql } from '@apollo/client';
 import { onCreateFeaturePost } from '../../graphql/subscriptions';
 import { Observable } from 'zen-observable-ts';
@@ -35,7 +35,7 @@ import { SellerVerificationData } from './components/SellerVerificationForm';
 import TimelapseViewer from '../../components/SimpleTimelapseViewer';
 import { dynamodbService, TimelapseItem as DbTimelapseItem, dataUpdateManager, batchOperations } from '../../services/dynamodbService';
 import VideoPlayer from '../../components/VideoPlayer';
-import { subscriptionClient } from '../../services/aws-config';
+import { graphqlClient } from '../../services/aws-config';
 import { ProfileMediaProcessor } from '../../services/mediaProcessor';
 
 
@@ -108,7 +108,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
   useEffect(() => {
     if (!user) return;
 
-    const subscription = subscriptionClient.subscribe({
+            const subscription = graphqlClient.subscribe({
       query: gql(onCreateFeaturePost),
     }).subscribe({
       next: (result: any) => {
@@ -1016,7 +1016,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
             text: 'Open Shop',
             onPress: () => {
               // Navigate to LocalShop screen with media processing enabled
-              onChangeScreen('localshop');
+      onChangeScreen('localshop');
             }
           }
         ]
@@ -1197,9 +1197,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onChangeScreen }) => {
                 console.log(`✅ Successfully deleted all ${timelapseIds.length} timelapses with S3 cleanup`);
                 
                 // Also delete from DynamoDB
-                for (const id of timelapseIds) {
+              for (const id of timelapseIds) {
                   try {
-                    await dynamodbService.deleteTimelapseItem(id);
+                await dynamodbService.deleteTimelapseItem(id);
                   } catch (dbError) {
                     console.error(`Warning: Failed to delete ${id} from DynamoDB:`, dbError);
                   }

@@ -13,7 +13,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
-import awsConfig from '../services/aws-config';
+import awsConfig from "../services/aws-config";
 
 const { width, height } = Dimensions.get('window');
 

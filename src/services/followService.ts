@@ -1,4 +1,4 @@
-import { subscriptionClient } from './aws-config';
+import { graphqlClient } from './aws-config';
 import { gql } from '@apollo/client';
 import {
   followUser,
@@ -26,7 +26,7 @@ export const followSeller = async (followerId: string, sellerId: string): Promis
   try {
     console.log(`User ${followerId} following seller ${sellerId}`);
     
-    const response = await subscriptionClient.mutate({
+    const response = await graphqlClient.mutate({
       mutation: gql`${followUser}`,
       variables: {
         followerId,
@@ -53,7 +53,7 @@ export const unfollowSeller = async (followerId: string, sellerId: string): Prom
   try {
     console.log(`User ${followerId} unfollowing seller ${sellerId}`);
     
-    const response = await subscriptionClient.mutate({
+    const response = await graphqlClient.mutate({
       mutation: gql`${unfollowUser}`,
       variables: {
         followerId,
@@ -78,7 +78,7 @@ export const unfollowSeller = async (followerId: string, sellerId: string): Prom
  */
 export const getFollowedSellersList = async (userId: string): Promise<FollowedSeller[]> => {
   try {
-    const response = await subscriptionClient.query({
+    const response = await graphqlClient.query({
       query: gql`${getFollowedSellers}`,
       variables: { userId },
       fetchPolicy: 'no-cache'
@@ -100,7 +100,7 @@ export const getFollowedSellersList = async (userId: string): Promise<FollowedSe
  */
 export const checkFollowingStatus = async (followerId: string, sellerId: string): Promise<boolean> => {
   try {
-    const response = await subscriptionClient.query({
+    const response = await graphqlClient.query({
       query: gql`${isFollowing}`,
       variables: {
         followerId,

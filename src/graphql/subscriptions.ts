@@ -1,4 +1,4 @@
-import awsConfig from '../services/aws-config';
+import awsConfig from "../services/aws-config";
 
 export const onCreateTimelapse = /* GraphQL */ `
   subscription OnCreateTimelapse {

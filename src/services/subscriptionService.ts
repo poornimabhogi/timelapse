@@ -1,4 +1,4 @@
-import { subscriptionClient } from './aws-config';
+import { graphqlClient } from './aws-config';
 import { gql } from '@apollo/client';
 import {
   onCreateProduct,
@@ -82,7 +82,7 @@ export const subscriptionManager: SubscriptionManager = {
  */
 export const getFollowedSellersList = async (userId: string): Promise<string[]> => {
   try {
-    const response = await subscriptionClient.query({
+    const response = await graphqlClient.query({
       query: gql`${getFollowedSellers}`,
       variables: { userId },
       fetchPolicy: 'no-cache'
@@ -103,7 +103,7 @@ export const getFollowedSellersList = async (userId: string): Promise<string[]> 
  */
 export const checkIsFollowing = async (followerId: string, followingId: string): Promise<boolean> => {
   try {
-    const response = await subscriptionClient.query({
+    const response = await graphqlClient.query({
       query: gql`${isFollowing}`,
       variables: { followerId, followingId },
       fetchPolicy: 'no-cache'
@@ -126,7 +126,7 @@ export const subscribeToFollowedSellersUpdates = (userId: string, callbacks: Pro
     console.log(`Setting up personalized subscriptions for user: ${userId}`);
     
     // Subscribe to followed seller products
-    const productSub = subscriptionClient.subscribe({
+    const productSub = graphqlClient.subscribe({
       query: gql`${onFollowedSellerProducts}`,
       variables: { followerId: userId },
       fetchPolicy: 'no-cache'
@@ -151,7 +151,7 @@ export const subscribeToFollowedSellersUpdates = (userId: string, callbacks: Pro
     });
 
     // Subscribe to followed seller inventory updates
-    const inventorySub = subscriptionClient.subscribe({
+    const inventorySub = graphqlClient.subscribe({
       query: gql`${onFollowedSellerInventory}`,
       variables: { followerId: userId },
       fetchPolicy: 'no-cache'
@@ -194,7 +194,7 @@ export const subscribeToMarketplaceUpdates = (callbacks: ProductSubscriptionCall
     console.log('Setting up marketplace subscriptions...');
     
     // Subscribe to new products
-    const createSub = subscriptionClient.subscribe({
+    const createSub = graphqlClient.subscribe({
       query: gql`${onCreateProduct}`,
       fetchPolicy: 'no-cache'
     }).subscribe({
@@ -211,7 +211,7 @@ export const subscribeToMarketplaceUpdates = (callbacks: ProductSubscriptionCall
     });
 
     // Subscribe to product updates
-    const updateSub = subscriptionClient.subscribe({
+    const updateSub = graphqlClient.subscribe({
       query: gql`${onUpdateProduct}`,
       fetchPolicy: 'no-cache'
     }).subscribe({
@@ -228,7 +228,7 @@ export const subscribeToMarketplaceUpdates = (callbacks: ProductSubscriptionCall
     });
 
     // Subscribe to product deletions
-    const deleteSub = subscriptionClient.subscribe({
+    const deleteSub = graphqlClient.subscribe({
       query: gql`${onDeleteProduct}`,
       fetchPolicy: 'no-cache'
     }).subscribe({
@@ -245,7 +245,7 @@ export const subscribeToMarketplaceUpdates = (callbacks: ProductSubscriptionCall
     });
 
     // Subscribe to inventory updates
-    const inventorySub = subscriptionClient.subscribe({
+    const inventorySub = graphqlClient.subscribe({
       query: gql`${onInventoryUpdate}`,
       fetchPolicy: 'no-cache'
     }).subscribe({
@@ -288,7 +288,7 @@ export const subscribeToSellerUpdates = (sellerId: string, callbacks: ProductSub
   try {
     console.log(`Setting up seller subscriptions for: ${sellerId}`);
     
-    const subscription = subscriptionClient.subscribe({
+    const subscription = graphqlClient.subscribe({
       query: gql`${onSellerProducts}`,
       variables: { sellerId },
       fetchPolicy: 'no-cache'
@@ -332,7 +332,7 @@ export const subscribeToCategoryUpdates = (category: string, callbacks: ProductS
   try {
     console.log(`Setting up category subscriptions for: ${category}`);
     
-    const subscription = subscriptionClient.subscribe({
+    const subscription = graphqlClient.subscribe({
       query: gql`${onProductsByCategory}`,
       variables: { category },
       fetchPolicy: 'no-cache'
@@ -374,7 +374,7 @@ export const updateInventory = async (
     // Calculate the change (we'll need to fetch current inventory or pass it)
     const change = 0; // This should be calculated based on current inventory
     
-    const response = await subscriptionClient.mutate({
+    const response = await graphqlClient.mutate({
       mutation: gql`${updateInventoryMutation}`,
       variables: {
         input: {
@@ -432,7 +432,7 @@ export const monitorProductInventory = (
     console.log(`Monitoring inventory for products: ${productIds.join(', ')}`);
     
     const subscriptions = productIds.map(productId => 
-      subscriptionClient.subscribe({
+      graphqlClient.subscribe({
         query: gql`${onInventoryUpdate}`,
         variables: { productId },
         fetchPolicy: 'no-cache'

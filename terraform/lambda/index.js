@@ -44,61 +44,61 @@ exports.handler = async (event) => {
  * Handle S3 upload events (automatic processing)
  */
 async function handleS3Upload(event) {
-  const bucket = event.Records[0].s3.bucket.name;
-  const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
-  
-  // Validate the file is in the uploads folder
-  if (!key.startsWith('uploads/')) {
-    console.log('Not processing file outside of uploads folder:', key);
-    return { status: 'skipped', message: 'File not in uploads folder' };
-  }
-  
-  // Extract user ID and file name from the key
-  const keyParts = key.split('/');
-  if (keyParts.length < 3) {
-    console.log('Invalid key format:', key);
-    return { status: 'error', message: 'Invalid key format' };
-  }
-  
-  const userId = keyParts[1];
-  const fileName = keyParts[keyParts.length - 1];
-  const fileExt = path.extname(fileName).toLowerCase();
-  const fileNameWithoutExt = path.basename(fileName, fileExt);
+    const bucket = event.Records[0].s3.bucket.name;
+    const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
+    
+    // Validate the file is in the uploads folder
+    if (!key.startsWith('uploads/')) {
+      console.log('Not processing file outside of uploads folder:', key);
+      return { status: 'skipped', message: 'File not in uploads folder' };
+    }
+    
+    // Extract user ID and file name from the key
+    const keyParts = key.split('/');
+    if (keyParts.length < 3) {
+      console.log('Invalid key format:', key);
+      return { status: 'error', message: 'Invalid key format' };
+    }
+    
+    const userId = keyParts[1];
+    const fileName = keyParts[keyParts.length - 1];
+    const fileExt = path.extname(fileName).toLowerCase();
+    const fileNameWithoutExt = path.basename(fileName, fileExt);
   const category = determineCategoryFromPath(key);
-  
+    
   // Check if the file is a supported media type
-  const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(fileExt);
-  const isVideo = ['.mp4', '.mov', '.avi', '.webm'].includes(fileExt);
-  
-  if (!isImage && !isVideo) {
-    console.log('Not processing non-media file:', fileName);
-    return { status: 'skipped', message: 'Not a media file' };
-  }
-  
-  // Get the original file from S3
+    const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(fileExt);
+    const isVideo = ['.mp4', '.mov', '.avi', '.webm'].includes(fileExt);
+    
+    if (!isImage && !isVideo) {
+      console.log('Not processing non-media file:', fileName);
+      return { status: 'skipped', message: 'Not a media file' };
+    }
+    
+    // Get the original file from S3
   const s3Object = await s3Client.send(new GetObjectCommand({
-    Bucket: bucket,
-    Key: key
+      Bucket: bucket,
+      Key: key
   }));
-  
-  let metadata;
-  let processedKey;
+    
+    let metadata;
+    let processedKey;
   let thumbnailKeys = [];
-  
-  if (isImage) {
-    // Process image and create thumbnails
+    
+    if (isImage) {
+      // Process image and create thumbnails
     const result = await processImage(s3Object.Body, bucket, userId, fileNameWithoutExt, fileExt, category);
     metadata = result.metadata;
     processedKey = result.processedKey;
     thumbnailKeys = result.thumbnailKeys;
-  } else if (isVideo) {
+    } else if (isVideo) {
     // Process video
     const result = await processVideo(s3Object.Body, bucket, userId, fileNameWithoutExt, fileExt, category);
     metadata = result.metadata;
     processedKey = result.processedKey;
     thumbnailKeys = result.thumbnailKeys;
-  }
-  
+    }
+    
   // Update the appropriate DynamoDB table based on category
   await updateDatabase(category, {
     userId,
@@ -108,18 +108,18 @@ async function handleS3Upload(event) {
     metadata,
     bucket
   });
-  
-  return {
-    status: 'success',
-    message: 'Media processed successfully',
-    data: {
-      userId,
+    
+    return {
+      status: 'success',
+      message: 'Media processed successfully',
+      data: {
+        userId,
       originalUrl: `s3://${bucket}/${key}`,
       processedUrl: `s3://${bucket}/${processedKey}`,
       thumbnailUrls: thumbnailKeys.map(tk => `s3://${bucket}/${tk}`),
       metadata
-    }
-  };
+      }
+    };
 }
 
 /**
@@ -220,9 +220,9 @@ async function processImage(imageBuffer, bucket, userId, fileName, fileExt, cate
   
   return {
     metadata: {
-      width: metadata.width,
-      height: metadata.height,
-      format: metadata.format,
+    width: metadata.width,
+    height: metadata.height,
+    format: metadata.format,
       size: optimizedImageBuffer.length,
       category
     },
@@ -263,7 +263,7 @@ async function processVideo(videoBuffer, bucket, userId, fileName, fileExt, cate
   
   return {
     metadata: {
-      format: fileExt.replace('.', ''),
+    format: fileExt.replace('.', ''),
       size: videoBuffer.length,
       duration: 0, // In real implementation, extract from video
       category

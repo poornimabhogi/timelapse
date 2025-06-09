@@ -147,7 +147,7 @@ const LocalShop: React.FC<LocalShopProps> = ({ onChangeScreen }) => {
       try {
         const verificationData = await getSellerVerificationStatus(user.uid);
         if (verificationData) {
-          setSellerStatus(verificationData.status);
+          setSellerStatus(verificationData.status as 'pending' | 'approved' | 'rejected');
           console.log('Current seller verification status:', verificationData.status);
         }
       } catch (error) {

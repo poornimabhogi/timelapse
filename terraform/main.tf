@@ -128,5 +128,5 @@ output "s3_bucket_name" {
   value = aws_s3_bucket.media_storage.id
 } 
 output "REACT_APP_APPSYNC_ENDPOINT" {
-  value = aws_appsync_graphql_api.main.uris["GRAPHQL"]
+  value = aws_appsync_graphql_api.timelapse_api.uris["GRAPHQL"]
 }

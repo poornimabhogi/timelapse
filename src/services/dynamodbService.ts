@@ -537,8 +537,11 @@ export const dynamodbService = {
   // Helper to get the current user ID
   async getCurrentUserId(): Promise<string> {
     try {
-      const user = await awsConfig.getCurrentUser();
-      return user.uid;
+      const authResult = await awsConfig.getCurrentUser();
+      if (!authResult || !authResult.user) {
+        throw new Error('No authenticated user');
+      }
+      return authResult.user.uid;
     } catch (error) {
       console.error('Error getting current user:', error);
       throw error;

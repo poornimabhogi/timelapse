@@ -168,10 +168,10 @@ export const getUserProducts = async (sellerId?: string): Promise<Product[]> => 
     if (!sellerId) {
       // Get current user if sellerId not provided
       const currentUser = await getCurrentUser();
-      if (!currentUser?.userId) {
+      if (!currentUser?.user?.uid) {
         throw new Error('User not authenticated');
       }
-      sellerId = currentUser.userId;
+      sellerId = currentUser.user.uid;
     }
 
     const response = await apolloClient.query({
@@ -211,7 +211,7 @@ export const createProduct = async (productData: {
     
     // Get current user
     const currentUser = await getCurrentUser();
-    if (!currentUser?.userId) {
+    if (!currentUser?.user?.uid) {
       throw new Error('User not authenticated');
     }
 
@@ -220,7 +220,7 @@ export const createProduct = async (productData: {
       variables: {
         input: {
           ...productData,
-          sellerId: currentUser.userId,
+          sellerId: currentUser.user.uid,
           inventory: productData.inventory || 0
         }
       }

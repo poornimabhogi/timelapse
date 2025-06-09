@@ -4,14 +4,14 @@ resource "aws_lambda_function" "batch_processor" {
   runtime          = "nodejs16.x"
   filename         = data.archive_file.batch_processor_lambda.output_path
   source_code_hash = data.archive_file.batch_processor_lambda.output_base64sha256
-  role             = aws_iam_role.lambda_role.arn
+  role             = aws_iam_role.lambda_exec_role.arn
   
   environment {
     variables = {
-      REGION            = var.region
-      TIMELAPSE_TABLE   = aws_dynamodb_table.timelapse_items.name
+              REGION            = var.aws_region
+      TIMELAPSE_TABLE   = aws_dynamodb_table.timelapse_items_table.name
       INTERACTIONS_TABLE = aws_dynamodb_table.interactions_table.name
-      COMMENT_TABLE     = aws_dynamodb_table.comments_table.name
+      COMMENT_TABLE     = aws_dynamodb_table.posts_table.name
     }
   }
 
@@ -159,9 +159,9 @@ resource "aws_iam_policy" "batch_processor_policy" {
         ]
         Effect   = "Allow"
         Resource = [
-          aws_dynamodb_table.timelapse_items.arn,
+          aws_dynamodb_table.timelapse_items_table.arn,
           aws_dynamodb_table.interactions_table.arn,
-          aws_dynamodb_table.comments_table.arn
+          aws_dynamodb_table.posts_table.arn
         ]
       },
       {
@@ -178,6 +178,6 @@ resource "aws_iam_policy" "batch_processor_policy" {
 }
 
 resource "aws_iam_role_policy_attachment" "batch_processor_policy_attachment" {
-  role       = aws_iam_role.lambda_role.name
+  role       = aws_iam_role.lambda_exec_role.name
   policy_arn = aws_iam_policy.batch_processor_policy.arn
 } 

@@ -26,7 +26,7 @@ import { SocialFeedCard } from '../../components/SocialFeedCard';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { Observable } from 'zen-observable-ts';
 import { dynamodbService, dataUpdateManager, TimelapseItem } from '../../services/dynamodbService';
-import awsConfig from '../../services/aws-config';
+import awsConfig from "../../services/aws-config";
 import { TimelapseViewer } from '../../components/SimpleTimelapseViewer';
 
 
