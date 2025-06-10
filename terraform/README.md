@@ -140,5 +140,5 @@ terraform destroy -var-file=terraform.tfvars
 ## Additional Resources
 
 - [AWS AppSync Documentation](https://aws.amazon.com/appsync/)
-- [AWS Amplify for React Native](https://docs.amplify.aws/lib/q/platform/react-native/)
+- [AWS SDK for JavaScript](https://docs.aws.amazon.com/sdk-for-javascript/)
 - [Terraform AWS Provider Documentation](https://registry.terraform.io/providers/hashicorp/aws/latest/docs) 

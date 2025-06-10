@@ -16,7 +16,7 @@ import { ShopScreenProps, ProductData } from '../../types/interfaces';
 import BottomTabBar from '../../components/common/BottomTabBar';
 import { getAllProducts, Product } from '../../services/productService';
 import { 
-  subscribeToFollowedSellersUpdates,
+  subscribeToMarketplaceUpdates,
   subscribeToCategoryUpdates,
   unsubscribeFromAll,
   ProductSubscriptionCallbacks 
@@ -75,7 +75,7 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
         sellerId: product.sellerId,
         sellerName: product.sellerName,
         sellerVerified: product.sellerVerified,
-        description: product.description
+        inventory: product.inventory
       }));
       
       setProducts(convertedProducts);
@@ -99,7 +99,7 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
     
     const callbacks: ProductSubscriptionCallbacks = {
       onProductCreated: (product) => {
-        console.log('🔴 PERSONALIZED: New product from followed seller:', product.name);
+        console.log('🆕 NEW: Product added to marketplace:', product.name);
         
         // Convert to ProductData format and add to products
         const newProduct = {
@@ -112,21 +112,21 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
           sellerId: product.sellerId,
           sellerName: product.sellerName,
           sellerVerified: true, // Only verified sellers can create products
-          description: product.description
+          inventory: product.inventory
         };
         
         setProducts(prevProducts => [newProduct, ...prevProducts]);
         
-        // Show personalized notification
+        // Show marketplace notification
         Alert.alert(
-          '💫 New from Followed Seller!', 
-          `${product.name} just added by a seller you follow`,
+          '🆕 New Product!', 
+          `${product.name} just added to marketplace`,
           [{ text: 'Check it out!' }]
         );
       },
       
       onProductUpdated: (product) => {
-        console.log('🟡 PERSONALIZED: Product updated by followed seller:', product.name);
+        console.log('🟡 UPDATED: Product updated in marketplace:', product.name);
         
         setProducts(prevProducts => 
           prevProducts.map(p => 
@@ -137,7 +137,7 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
                   price: product.price,
                   image: product.images[0] || p.image,
                   category: product.category,
-                  description: product.description
+                  inventory: product.inventory
                 }
               : p
           )
@@ -145,7 +145,7 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
       },
       
       onProductDeleted: (product) => {
-        console.log('🔴 PERSONALIZED: Product removed by followed seller:', product.id);
+        console.log('🗑️ REMOVED: Product removed from marketplace:', product.id);
         
         setProducts(prevProducts => 
           prevProducts.filter(p => p.id !== product.id)
@@ -153,7 +153,7 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
       },
       
       onInventoryChanged: (update) => {
-        console.log(`📦 PERSONALIZED: Inventory updated by followed seller for ${update.productId}: ${update.oldInventory} → ${update.newInventory}`);
+        console.log(`📦 INVENTORY: Stock updated for ${update.productId}: ${update.oldInventory} → ${update.newInventory}`);
         
         // Update product inventory in real-time
         setProducts(prevProducts => 
@@ -171,9 +171,8 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
       }
     };
     
-    if (user?.uid) {
-      subscribeToFollowedSellersUpdates(user.uid, callbacks);
-    }
+    // Subscribe to global marketplace updates
+    subscribeToMarketplaceUpdates(callbacks);
   };
 
   const setupCategorySubscription = (category: string) => {
@@ -192,8 +191,7 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
                     ...p,
                     title: product.name,
                     price: product.price,
-                    image: product.images[0] || p.image,
-                    description: product.description
+                    image: product.images[0] || p.image
                   }
                 : p
             )
@@ -366,19 +364,19 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
   const renderEmptyMarketplace = () => (
     <View style={styles.emptyMarketplace}>
       <Text style={styles.emptyMarketplaceIcon}>🏪</Text>
-      <Text style={styles.emptyMarketplaceTitle}>Personalized Marketplace</Text>
+      <Text style={styles.emptyMarketplaceTitle}>Global Marketplace</Text>
       <Text style={styles.emptyMarketplaceText}>
-        Welcome to your personalized shop! This marketplace shows products from sellers you follow.
+        Welcome to the global marketplace! This marketplace shows products from all sellers.
       </Text>
       <View style={styles.marketplaceInfo}>
         <Text style={styles.marketplaceInfoTitle}>How it works:</Text>
-        <Text style={styles.marketplaceInfoItem}>👥 Follow sellers you're interested in</Text>
-        <Text style={styles.marketplaceInfoItem}>📱 Get live updates when they add products</Text>
+        <Text style={styles.marketplaceInfoItem}>👥 Browse products from all sellers</Text>
+        <Text style={styles.marketplaceInfoItem}>📱 Get live updates when products are added</Text>
         <Text style={styles.marketplaceInfoItem}>📦 See real-time inventory changes</Text>
-        <Text style={styles.marketplaceInfoItem}>🎯 Only see relevant products you care about</Text>
+        <Text style={styles.marketplaceInfoItem}>🎯 Explore a wide range of products</Text>
       </View>
-      <Text style={styles.emptyMarketplaceFooter}>
-        Visit seller profiles and follow them to see their products here!
+              <Text style={styles.emptyMarketplaceFooter}>
+        Check back later for new products from our sellers!
       </Text>
     </View>
   );
@@ -389,7 +387,7 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
       Platform.OS === 'android' && styles.androidSafeTop
     ]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Following</Text>
+        <Text style={styles.headerTitle}>Shop</Text>
         <View style={styles.headerIcons}>
           <TouchableOpacity 
             style={styles.iconButton}

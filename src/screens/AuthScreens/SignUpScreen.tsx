@@ -111,7 +111,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({
     try {
       console.log('Attempting to sign up user:', username);
       
-      // Retry mechanism for Amplify operations
+              // Retry mechanism for AWS Cognito operations
       const MAX_RETRIES = 3;
       let attempt = 0;
       let signUpResult = null;

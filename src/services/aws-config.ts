@@ -1,22 +1,20 @@
-// Production AWS Configuration for React Native using AWS Amplify v6
-// Hermes-compatible implementation with proper tree-shaking
+// Production AWS Configuration for React Native using direct AWS APIs
 import 'react-native-get-random-values';
 import 'react-native-url-polyfill/auto';
 import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Apollo GraphQL
-import { ApolloClient, InMemoryCache, createHttpLink, gql } from '@apollo/client';
+import { ApolloClient, InMemoryCache, HttpLink, from, gql } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
 
-// AWS Configuration from environment variables
-const amplifyConfig = {
-  region: Config.AWS_REGION || 'us-east-1',
-  userPoolId: Config.USER_POOL_ID || '',
-  userPoolClientId: Config.USER_POOL_WEB_CLIENT_ID || '',
-  identityPoolId: Config.IDENTITY_POOL_ID || '',
-  appsyncUrl: Config.APPSYNC_API_URL || '',
-  s3Bucket: Config.S3_BUCKET || '',
+const awsConfig = {
+  region: 'us-east-1',
+  userPoolId: 'us-east-1_S8YHdONmj',
+  userPoolClientId: '7ep3tq85dptvem1a8hhdu3fjps',
+  identityPoolId: 'us-east-1:05ae5e6e-c6ed-4e06-bc9b-a74ef5b3fd37',
+  appsyncUrl: 'https://ujwgvgkxlnaqdjj6nwb7zs5i7i.appsync-api.us-east-1.amazonaws.com/graphql',
+  s3Bucket: 'timelapse-storage-bucket-231703648725',
 };
 
 // Storage keys
@@ -25,10 +23,9 @@ const ID_TOKEN_KEY = 'timelapse_id_token';
 const REFRESH_TOKEN_KEY = 'timelapse_refresh_token';
 const USER_KEY = 'timelapse_user';
 
-// GraphQL setup
-const httpLink = createHttpLink({
-  uri: amplifyConfig.appsyncUrl,
-  fetch: fetch,
+// Apollo Client setup for GraphQL
+const httpLink = new HttpLink({
+  uri: awsConfig.appsyncUrl,
 });
 
 const authLink = setContext(async (_, { headers }) => {
@@ -53,7 +50,7 @@ export const apolloClient = new ApolloClient({
 // Authentication Functions - Using native fetch with Cognito REST API
 export async function signIn(username: string, password: string) {
   try {
-    const response = await fetch(`https://cognito-idp.${amplifyConfig.region}.amazonaws.com/`, {
+    const response = await fetch(`https://cognito-idp.${awsConfig.region}.amazonaws.com/`, {
       method: 'POST',
       headers: {
         'X-Amz-Target': 'AWSCognitoIdentityProviderService.InitiateAuth',
@@ -61,11 +58,11 @@ export async function signIn(username: string, password: string) {
       },
       body: JSON.stringify({
         AuthFlow: 'USER_PASSWORD_AUTH',
-        ClientId: amplifyConfig.userPoolClientId,
-        AuthParameters: {
-          USERNAME: username,
-          PASSWORD: password,
-        },
+        ClientId: awsConfig.userPoolClientId,
+      AuthParameters: {
+        USERNAME: username,
+        PASSWORD: password,
+      },
       }),
     });
 
@@ -84,7 +81,7 @@ export async function signIn(username: string, password: string) {
         [ID_TOKEN_KEY, IdToken || ''],
         [REFRESH_TOKEN_KEY, RefreshToken || ''],
       ]);
-
+      
       // Get user details
       const user = await getCurrentUser();
       return { user, isSignedIn: true };
@@ -99,19 +96,19 @@ export async function signIn(username: string, password: string) {
 
 export async function signUp(username: string, password: string, email: string) {
   try {
-    const response = await fetch(`https://cognito-idp.${amplifyConfig.region}.amazonaws.com/`, {
+    const response = await fetch(`https://cognito-idp.${awsConfig.region}.amazonaws.com/`, {
       method: 'POST',
       headers: {
         'X-Amz-Target': 'AWSCognitoIdentityProviderService.SignUp',
         'Content-Type': 'application/x-amz-json-1.1',
       },
       body: JSON.stringify({
-        ClientId: amplifyConfig.userPoolClientId,
-        Username: username,
-        Password: password,
-        UserAttributes: [
+        ClientId: awsConfig.userPoolClientId,
+      Username: username,
+      Password: password,
+      UserAttributes: [
           { Name: 'email', Value: email },
-        ],
+      ],
       }),
     });
 
@@ -120,9 +117,9 @@ export async function signUp(username: string, password: string, email: string) 
     if (!response.ok) {
       throw new Error(data.message || 'Sign up failed');
     }
-
-    return {
-      success: true,
+    
+    return { 
+      success: true, 
       userSub: data.UserSub,
       codeDeliveryDetails: data.CodeDeliveryDetails,
     };
@@ -134,16 +131,16 @@ export async function signUp(username: string, password: string, email: string) 
 
 export async function confirmSignUp(username: string, code: string) {
   try {
-    const response = await fetch(`https://cognito-idp.${amplifyConfig.region}.amazonaws.com/`, {
+    const response = await fetch(`https://cognito-idp.${awsConfig.region}.amazonaws.com/`, {
       method: 'POST',
       headers: {
         'X-Amz-Target': 'AWSCognitoIdentityProviderService.ConfirmSignUp',
         'Content-Type': 'application/x-amz-json-1.1',
       },
       body: JSON.stringify({
-        ClientId: amplifyConfig.userPoolClientId,
-        Username: username,
-        ConfirmationCode: code,
+        ClientId: awsConfig.userPoolClientId,
+      Username: username,
+      ConfirmationCode: code,
       }),
     });
 
@@ -152,7 +149,7 @@ export async function confirmSignUp(username: string, code: string) {
     if (!response.ok) {
       throw new Error(data.message || 'Confirmation failed');
     }
-
+    
     return { success: true };
   } catch (error: any) {
     console.error('Confirm sign up error:', error);
@@ -162,15 +159,15 @@ export async function confirmSignUp(username: string, code: string) {
 
 export async function resetPassword(username: string) {
   try {
-    const response = await fetch(`https://cognito-idp.${amplifyConfig.region}.amazonaws.com/`, {
+    const response = await fetch(`https://cognito-idp.${awsConfig.region}.amazonaws.com/`, {
       method: 'POST',
       headers: {
         'X-Amz-Target': 'AWSCognitoIdentityProviderService.ForgotPassword',
         'Content-Type': 'application/x-amz-json-1.1',
       },
       body: JSON.stringify({
-        ClientId: amplifyConfig.userPoolClientId,
-        Username: username,
+        ClientId: awsConfig.userPoolClientId,
+      Username: username,
       }),
     });
 
@@ -179,8 +176,8 @@ export async function resetPassword(username: string) {
     if (!response.ok) {
       throw new Error(data.message || 'Password reset failed');
     }
-
-    return {
+    
+    return { 
       success: true,
       codeDeliveryDetails: data.CodeDeliveryDetails,
     };
@@ -192,17 +189,17 @@ export async function resetPassword(username: string) {
 
 export async function confirmResetPassword(username: string, code: string, newPassword: string) {
   try {
-    const response = await fetch(`https://cognito-idp.${amplifyConfig.region}.amazonaws.com/`, {
+    const response = await fetch(`https://cognito-idp.${awsConfig.region}.amazonaws.com/`, {
       method: 'POST',
       headers: {
         'X-Amz-Target': 'AWSCognitoIdentityProviderService.ConfirmForgotPassword',
         'Content-Type': 'application/x-amz-json-1.1',
       },
       body: JSON.stringify({
-        ClientId: amplifyConfig.userPoolClientId,
-        Username: username,
-        ConfirmationCode: code,
-        Password: newPassword,
+        ClientId: awsConfig.userPoolClientId,
+      Username: username,
+      ConfirmationCode: code,
+      Password: newPassword,
       }),
     });
 
@@ -211,7 +208,7 @@ export async function confirmResetPassword(username: string, code: string, newPa
     if (!response.ok) {
       throw new Error(data.message || 'Password confirmation failed');
     }
-
+    
     return { success: true };
   } catch (error: any) {
     console.error('Confirm reset password error:', error);
@@ -224,7 +221,7 @@ export async function signOut() {
     const accessToken = await getAccessToken();
     
     if (accessToken) {
-      await fetch(`https://cognito-idp.${amplifyConfig.region}.amazonaws.com/`, {
+      await fetch(`https://cognito-idp.${awsConfig.region}.amazonaws.com/`, {
         method: 'POST',
         headers: {
           'X-Amz-Target': 'AWSCognitoIdentityProviderService.GlobalSignOut',
@@ -243,7 +240,7 @@ export async function signOut() {
       REFRESH_TOKEN_KEY,
       USER_KEY,
     ]);
-
+    
     return { success: true };
   } catch (error: any) {
     console.error('Sign out error:', error);
@@ -268,7 +265,7 @@ export async function getCurrentUser() {
     if (!accessToken[1]) {
       return null;
     }
-
+    
     // Return cached user if available
     if (cachedUser[1]) {
       const user = JSON.parse(cachedUser[1]);
@@ -276,7 +273,7 @@ export async function getCurrentUser() {
     }
 
     // Fetch user from Cognito
-    const response = await fetch(`https://cognito-idp.${amplifyConfig.region}.amazonaws.com/`, {
+    const response = await fetch(`https://cognito-idp.${awsConfig.region}.amazonaws.com/`, {
       method: 'POST',
       headers: {
         'X-Amz-Target': 'AWSCognitoIdentityProviderService.GetUser',
@@ -286,20 +283,20 @@ export async function getCurrentUser() {
         AccessToken: accessToken[1],
       }),
     });
-
+    
     if (!response.ok) {
       return null;
     }
 
     const data = await response.json();
-    
+
     const userAttributes: any = {};
     data.UserAttributes?.forEach((attr: any) => {
       if (attr.Name && attr.Value) {
         userAttributes[attr.Name] = attr.Value;
       }
     });
-
+    
     const user = {
       username: data.Username || '',
       uid: userAttributes.sub || '',
@@ -373,9 +370,9 @@ export async function generatePresignedUrl(fileName: string, fileType: string): 
     }
 
     // Fallback: generate URLs manually
-    const fileUrl = `https://${amplifyConfig.s3Bucket}.s3.${amplifyConfig.region}.amazonaws.com/${key}`;
+    const fileUrl = `https://${awsConfig.s3Bucket}.s3.${awsConfig.region}.amazonaws.com/${key}`;
     const uploadUrl = fileUrl; // In production, this would be a proper presigned URL
-
+    
     return { uploadUrl, fileUrl, key };
   } catch (error: any) {
     console.error('Generate presigned URL error:', error);
@@ -426,7 +423,7 @@ export async function getMediaUrl(key: string): Promise<string> {
     }
 
     // Fallback: construct public URL
-    return `https://${amplifyConfig.s3Bucket}.s3.${amplifyConfig.region}.amazonaws.com/${key}`;
+    return `https://${awsConfig.s3Bucket}.s3.${awsConfig.region}.amazonaws.com/${key}`;
   } catch (error: any) {
     console.error('Get media URL error:', error);
     throw new Error(error.message || 'Failed to get media URL');
@@ -650,7 +647,7 @@ export async function updateSellerVerificationStatus(userId: string, status: 'ap
       }
     }
   `;
-
+  
   const variables = {
     input: {
       userId,
@@ -693,7 +690,7 @@ export async function sendSellerStatusNotification(userId: string, status: 'appr
   } catch (error: any) {
     console.error('Error sending seller status notification:', error);
     return { success: false, error: error.message };
-  }
+}
 }
 
 // Development helper function to simulate admin approval/rejection  
@@ -714,13 +711,13 @@ export async function simulateAdminAction(userId: string, action: 'approve' | 'r
         statusUpdate: updateResult.success,
         notificationSent: notificationResult.success
       });
-      
-      return {
+  
+  return {
         success: true,
         message: `Successfully ${action}d seller and sent notification`
-      };
-    }
-    
+  };
+}
+
     return { success: false, message: 'Failed to update status' };
   } catch (error: any) {
     console.error('Error simulating admin action:', error);
@@ -729,7 +726,7 @@ export async function simulateAdminAction(userId: string, action: 'approve' | 'r
 }
 
 // Export the configuration and clients for direct access if needed
-export { amplifyConfig as awsConfig, apolloClient as graphqlClient };
+export { awsConfig, apolloClient as graphqlClient };
 
 // Default export for backward compatibility
 export default {
@@ -759,4 +756,4 @@ export default {
   sendSellerStatusNotification,
   simulateAdminAction,
   apolloClient,
-}; 
+};

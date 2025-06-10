@@ -326,7 +326,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('AGGRESSIVE Android-specific logout handling');
         
         try {
-          // 1. Call AWS Amplify signOut
+          // 1. Call AWS Cognito signOut
           await awsConfig.signOut();
         } catch (signOutError) {
           console.log('Error during signOut, continuing with forced logout:', signOutError);
@@ -343,7 +343,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             key.includes('auth') || 
             key.includes('CognitoIdentityId') || 
             key.includes('token') || 
-            key.includes('amplify') ||
+            key.includes('aws') ||
             key.includes('user') ||
             key.includes('accessToken') ||
             key.includes('idToken') ||

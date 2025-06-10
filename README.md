@@ -156,7 +156,7 @@ timelapse/
 │   ├── dynamodb.tf
 │   ├── s3.tf
 │   └── appsync.tf
-└── amplify/                 # Amplify configuration
+└── env/                     # Environment configurations
 ```
 
 ## Setup Instructions

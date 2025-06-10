@@ -185,7 +185,7 @@ export const subscribeToFollowedSellersUpdates = (userId: string, callbacks: Pro
 };
 
 /**
- * Subscribe to all product updates for the global marketplace (DEPRECATED - use followedSellers instead)
+ * Subscribe to all product updates for the global marketplace
  */
 export const subscribeToMarketplaceUpdates = (callbacks: ProductSubscriptionCallbacks): string => {
   const subscriptionKey = 'marketplace-updates';
