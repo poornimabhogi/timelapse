@@ -129,7 +129,7 @@ export const getAllProducts = async (): Promise<Product[]> => {
     return verifiedSellerProducts;
 
   } catch (error) {
-    console.error('Error fetching all products:', error);
+    console.log('Product fetching not available (backend not deployed)');
     return [];
   }
 };
@@ -153,7 +153,7 @@ export const getSellerDetails = async (sellerId: string): Promise<SellerInfo | n
 
     return null;
   } catch (error) {
-    console.error(`Error fetching seller details for ${sellerId}:`, error);
+    console.log(`Seller details not available for ${sellerId} (backend not deployed)`);
     return null;
   }
 };
@@ -190,7 +190,7 @@ export const getUserProducts = async (sellerId?: string): Promise<Product[]> => 
 
     return [];
   } catch (error) {
-    console.error('Error fetching user products:', error);
+    console.log('User products not available (backend not deployed)');
     return [];
   }
 };

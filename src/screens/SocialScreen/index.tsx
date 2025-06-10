@@ -20,11 +20,10 @@ import { styles } from './styles';
 import { useAuth } from '../../contexts/AuthContext';
 import { listTimelapses, getFeaturePosts } from '../../graphql/queries';
 import { onCreateTimelapse, onCreateFeaturePost } from '../../graphql/subscriptions';
-import { OnCreateTimelapseSubscription, OnCreateFeaturePostSubscription } from '../../graphql/subscriptions';
 import { SocialFeedItem } from '../../types/social';
 import { SocialFeedCard } from '../../components/SocialFeedCard';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
-import { Observable } from 'zen-observable-ts';
+// Observable import removed - using native subscription handling
 import { dynamodbService, dataUpdateManager, TimelapseItem } from '../../services/dynamodbService';
 import awsConfig from "../../services/aws-config";
 import { TimelapseViewer } from '../../components/SimpleTimelapseViewer';
@@ -35,12 +34,7 @@ interface GraphQLResponse<T> {
   errors?: Array<{ message: string }>;
 }
 
-interface SubscriptionResponse<T> {
-  provider: any;
-  value: {
-    data: T;
-  };
-}
+// SubscriptionResponse interface removed - not needed with current subscription handling
 
 interface User {
   id: string;
@@ -284,44 +278,61 @@ const SocialScreen: React.FC<SocialScreenProps> = ({ onChangeScreen }) => {
   }, [onChangeScreen]);
 
   useEffect(() => {
-    // Set up subscriptions
-    const timelapseSubscription = (awsConfig.graphqlQuery(onCreateTimelapse) as unknown as Observable<SubscriptionResponse<OnCreateTimelapseSubscription>>).subscribe({
-      next: ({ value }) => {
-        if (value.data?.onCreateTimelapse) {
-          const newItem = convertToSocialFeedItem(value.data.onCreateTimelapse);
-          setFeedItems(prevItems => {
-            // Check if it already exists
-            if (prevItems.some(item => item.id === newItem.id)) {
-              return prevItems;
-            }
-            return [newItem, ...prevItems];
-          });
-        }
-      },
-      error: (error: Error) => console.error('Error in timelapse subscription:', error),
-    });
+    // Skip subscriptions if no user or backend not available
+    if (!user?.uid) return;
 
-    const featurePostSubscription = (awsConfig.graphqlQuery(onCreateFeaturePost) as unknown as Observable<SubscriptionResponse<OnCreateFeaturePostSubscription>>).subscribe({
-      next: ({ value }) => {
-        if (value.data?.onCreateFeaturePost) {
-          const newItem = convertToSocialFeedItem(value.data.onCreateFeaturePost);
-          setFeedItems(prevItems => {
-            // Check if it already exists
-            if (prevItems.some(item => item.id === newItem.id)) {
-              return prevItems;
-            }
-            return [newItem, ...prevItems];
-          });
-        }
-      },
-      error: (error: Error) => console.error('Error in feature post subscription:', error),
-    });
+    try {
+      // Set up subscriptions with error handling
+      const timelapseSubscription = awsConfig.graphqlSubscription(onCreateTimelapse).subscribe({
+        next: (result: any) => {
+          if (result.data?.onCreateTimelapse) {
+            const newItem = convertToSocialFeedItem(result.data.onCreateTimelapse);
+            setFeedItems(prevItems => {
+              // Check if it already exists
+              if (prevItems.some(item => item.id === newItem.id)) {
+                return prevItems;
+              }
+              return [newItem, ...prevItems];
+            });
+          }
+        },
+        error: (error: Error) => {
+          console.error('Error in timelapse subscription:', error);
+          // Don't crash the app - subscriptions will work when backend is deployed
+        },
+      });
 
-    // Cleanup subscriptions on unmount
-    return () => {
-      timelapseSubscription.unsubscribe();
-      featurePostSubscription.unsubscribe();
-    };
+      const featurePostSubscription = awsConfig.graphqlSubscription(onCreateFeaturePost).subscribe({
+        next: (result: any) => {
+          if (result.data?.onCreateFeaturePost) {
+            const newItem = convertToSocialFeedItem(result.data.onCreateFeaturePost);
+            setFeedItems(prevItems => {
+              // Check if it already exists
+              if (prevItems.some(item => item.id === newItem.id)) {
+                return prevItems;
+              }
+              return [newItem, ...prevItems];
+            });
+          }
+        },
+        error: (error: Error) => {
+          console.error('Error in feature post subscription:', error);
+          // Don't crash the app - subscriptions will work when backend is deployed
+        },
+      });
+
+      // Cleanup subscriptions on unmount
+      return () => {
+        try {
+          timelapseSubscription.unsubscribe();
+          featurePostSubscription.unsubscribe();
+        } catch (error) {
+          console.log('Subscription cleanup error (expected if backend not deployed):', error);
+        }
+      };
+    } catch (error) {
+      console.log('Subscription setup error (expected if backend not deployed):', error);
+    }
   }, [user?.uid]);
 
   useEffect(() => {

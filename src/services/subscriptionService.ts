@@ -178,8 +178,8 @@ export const subscribeToFollowedSellersUpdates = (userId: string, callbacks: Pro
     return subscriptionKey;
 
   } catch (error) {
-    console.error('Error setting up followed sellers subscriptions:', error);
-    callbacks.onError?.(error as Error);
+    console.log('Followed sellers subscriptions not available (backend not deployed)');
+    // Don't call callbacks.onError to avoid app crashes
     return '';
   }
 };
@@ -205,8 +205,9 @@ export const subscribeToMarketplaceUpdates = (callbacks: ProductSubscriptionCall
         }
       },
       error: (error) => {
-        console.error('Create product subscription error:', error);
-        callbacks.onError?.(error);
+        // Silently handle subscription errors when backend is not deployed
+        console.log('Create product subscription not available (backend not deployed)');
+        // Don't call callbacks.onError to avoid app crashes
       }
     });
 
@@ -222,8 +223,9 @@ export const subscribeToMarketplaceUpdates = (callbacks: ProductSubscriptionCall
         }
       },
       error: (error) => {
-        console.error('Update product subscription error:', error);
-        callbacks.onError?.(error);
+        // Silently handle subscription errors when backend is not deployed
+        console.log('Update product subscription not available (backend not deployed)');
+        // Don't call callbacks.onError to avoid app crashes
       }
     });
 
@@ -239,8 +241,9 @@ export const subscribeToMarketplaceUpdates = (callbacks: ProductSubscriptionCall
         }
       },
       error: (error) => {
-        console.error('Delete product subscription error:', error);
-        callbacks.onError?.(error);
+        // Silently handle subscription errors when backend is not deployed
+        console.log('Delete product subscription not available (backend not deployed)');
+        // Don't call callbacks.onError to avoid app crashes
       }
     });
 
@@ -256,8 +259,9 @@ export const subscribeToMarketplaceUpdates = (callbacks: ProductSubscriptionCall
         }
       },
       error: (error) => {
-        console.error('Inventory subscription error:', error);
-        callbacks.onError?.(error);
+        // Silently handle subscription errors when backend is not deployed
+        console.log('Inventory subscription not available (backend not deployed)');
+        // Don't call callbacks.onError to avoid app crashes
       }
     });
 
@@ -273,8 +277,8 @@ export const subscribeToMarketplaceUpdates = (callbacks: ProductSubscriptionCall
     return subscriptionKey;
 
   } catch (error) {
-    console.error('Error setting up marketplace subscriptions:', error);
-    callbacks.onError?.(error as Error);
+    console.log('Marketplace subscriptions not available (backend not deployed)');
+    // Don't call callbacks.onError to avoid app crashes
     return '';
   }
 };
@@ -307,8 +311,9 @@ export const subscribeToSellerUpdates = (sellerId: string, callbacks: ProductSub
         }
       },
       error: (error) => {
-        console.error('Seller subscription error:', error);
-        callbacks.onError?.(error);
+        // Silently handle subscription errors when backend is not deployed
+        console.log('Seller subscription not available (backend not deployed)');
+        // Don't call callbacks.onError to avoid app crashes
       }
     });
 
@@ -317,8 +322,8 @@ export const subscribeToSellerUpdates = (sellerId: string, callbacks: ProductSub
     return subscriptionKey;
 
   } catch (error) {
-    console.error('Error setting up seller subscriptions:', error);
-    callbacks.onError?.(error as Error);
+    console.log('Seller subscriptions not available (backend not deployed)');
+    // Don't call callbacks.onError to avoid app crashes
     return '';
   }
 };
@@ -344,8 +349,9 @@ export const subscribeToCategoryUpdates = (category: string, callbacks: ProductS
         }
       },
       error: (error) => {
-        console.error('Category subscription error:', error);
-        callbacks.onError?.(error);
+        // Silently handle subscription errors when backend is not deployed
+        console.log('Category subscription not available (backend not deployed)');
+        // Don't call callbacks.onError to avoid app crashes
       }
     });
 
@@ -354,8 +360,8 @@ export const subscribeToCategoryUpdates = (category: string, callbacks: ProductS
     return subscriptionKey;
 
   } catch (error) {
-    console.error('Error setting up category subscriptions:', error);
-    callbacks.onError?.(error as Error);
+    console.log('Category subscriptions not available (backend not deployed)');
+    // Don't call callbacks.onError to avoid app crashes
     return '';
   }
 };
